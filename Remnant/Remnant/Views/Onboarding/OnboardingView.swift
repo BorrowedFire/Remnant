@@ -9,6 +9,7 @@ struct OnboardingView: View {
     @State private var accountBalance: Decimal = 0
     @State private var accountType: AccountType = .checking
     @State private var iconBounce = false
+    @State private var accountCreated = false
 
     private let totalSteps = 3
 
@@ -235,12 +236,15 @@ struct OnboardingView: View {
         case 0:
             withAnimation(.spring(duration: 0.4)) { step = 1 }
         case 1:
-            _ = environment.accountService.create(
-                name: accountName,
-                type: accountType,
-                balance: accountBalance
-            )
-            try? environment.accountService.save()
+            if !accountCreated {
+                _ = environment.accountService.create(
+                    name: accountName,
+                    type: accountType,
+                    balance: accountBalance
+                )
+                try? environment.accountService.save()
+                accountCreated = true
+            }
             withAnimation(.spring(duration: 0.4)) { step = 2 }
         case 2:
             hasCompletedOnboarding = true

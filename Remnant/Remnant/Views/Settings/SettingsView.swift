@@ -7,6 +7,7 @@ struct SettingsView: View {
     @Query(sort: \Account.sortOrder) private var accounts: [Account]
 
     @State private var showingAddAccount = false
+    @State private var editingAccount: Account?
     @State private var showingSubscription = false
     @State private var showingIncome = false
     @State private var showingCategories = false
@@ -22,19 +23,29 @@ struct SettingsView: View {
             List {
                 Section("Accounts") {
                     ForEach(accounts) { account in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(account.name)
-                                    .font(.body.weight(.medium))
-                                Text(account.type.rawValue.capitalized)
-                                    .font(.caption)
-                                    .foregroundStyle(Color.Theme.textTertiary)
+                        Button {
+                            editingAccount = account
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(account.name)
+                                        .font(.body.weight(.medium))
+                                    Text(account.type.rawValue.capitalized)
+                                        .font(.caption)
+                                        .foregroundStyle(Color.Theme.textTertiary)
+                                }
+                                Spacer()
+                                Text(account.currentBalance.currencyFormatted)
+                                    .font(.body.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(Color.Theme.textPrimary)
                             }
-                            Spacer()
-                            Text(account.currentBalance.currencyFormatted)
-                                .font(.body.weight(.semibold).monospacedDigit())
-                                .foregroundStyle(Color.Theme.textPrimary)
                         }
+                    }
+                    .onDelete { offsets in
+                        for index in offsets {
+                            environment.accountService.delete(accounts[index])
+                        }
+                        try? environment.accountService.save()
                     }
 
                     Button("Add Account", systemImage: "plus.circle") {
@@ -139,6 +150,9 @@ struct SettingsView: View {
             .sheet(isPresented: $showingAddAccount) {
                 AddAccountView()
             }
+            .sheet(item: $editingAccount) { account in
+                EditAccountView(account: account)
+            }
             .sheet(isPresented: $showingSubscription) {
                 SubscriptionView()
             }
@@ -181,6 +195,56 @@ struct ShareSheet: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Add Account
+
+struct EditAccountView: View {
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.dismiss) private var dismiss
+
+    let account: Account
+    @State private var name: String = ""
+    @State private var type: AccountType = .checking
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Account Details") {
+                    TextField("Account Name", text: $name)
+                    Picker("Type", selection: $type) {
+                        ForEach(AccountType.allCases, id: \.self) { t in
+                            Text(t.rawValue.capitalized).tag(t)
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.Theme.background)
+            .navigationTitle("Edit Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        account.name = name
+                        account.type = type
+                        account.updatedAt = Date()
+                        try? environment.accountService.save()
+                        dismiss()
+                    }
+                    .disabled(name.isEmpty)
+                    .fontWeight(.semibold)
+                }
+            }
+            .onAppear {
+                name = account.name
+                type = account.type
+            }
+        }
+    }
 }
 
 // MARK: - Add Account
