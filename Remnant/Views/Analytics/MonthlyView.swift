@@ -1,16 +1,24 @@
 import SwiftUI
 import SwiftData
 
+enum HistoryFilter: String, CaseIterable {
+    case all = "All"
+    case payments = "Payments"
+    case income = "Income"
+}
+
 struct MonthlyView: View {
     @Environment(AppEnvironment.self) private var environment
 
     @State private var selectedMonth: Int
     @State private var selectedYear: Int
     @State private var payments: [Payment] = []
+    @State private var incomeEntries: [IncomeEntry] = []
     @State private var categoryData: [(category: String, colorHex: String, total: Decimal)] = []
     @State private var trendData: [(month: Int, total: Decimal)] = []
     @State private var showingYearView = false
     @State private var showingSubscription = false
+    @State private var selectedFilter: HistoryFilter = .all
 
     init() {
         let now = Date()
@@ -29,6 +37,16 @@ struct MonthlyView: View {
         return formatter.string(from: date)
     }
 
+    private var isPremium: Bool { environment.subscriptionService.isPremium }
+
+    private var totalPaid: Decimal {
+        payments.reduce(0) { $0 + $1.amount }
+    }
+
+    private var totalEarned: Decimal {
+        incomeEntries.reduce(0) { $0 + $1.amount }
+    }
+
     private var groupedByCategory: [(category: String, payments: [Payment], total: Decimal)] {
         let grouped = Dictionary(grouping: payments) { $0.bill?.category?.name ?? "Other" }
         return grouped
@@ -36,32 +54,64 @@ struct MonthlyView: View {
             .sorted { $0.total > $1.total }
     }
 
+    private var groupedIncome: [(source: String, entries: [IncomeEntry], total: Decimal)] {
+        let grouped = Dictionary(grouping: incomeEntries) { $0.source?.name ?? "Other" }
+        return grouped
+            .map { (source: $0.key, entries: $0.value, total: $0.value.reduce(0) { $0 + $1.amount }) }
+            .sorted { $0.total > $1.total }
+    }
+
+    private var showPayments: Bool {
+        selectedFilter == .all || selectedFilter == .payments
+    }
+
+    private var showIncome: Bool {
+        selectedFilter == .all || selectedFilter == .income
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Spacing.lg) {
-                    // Month selector
                     monthSelector
 
-                    // Total
-                    totalCard
+                    // Filter picker
+                    Picker("Filter", selection: $selectedFilter) {
+                        ForEach(HistoryFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
 
-                    // Charts (premium)
-                    if isPremium && !payments.isEmpty {
+                    // Summary cards
+                    summaryCards
+
+                    // Charts (premium, payments only)
+                    if isPremium && !payments.isEmpty && showPayments {
                         CategoryBreakdownChart(data: categoryData)
                         SpendingTrendChart(data: trendData, year: selectedYear)
                     }
 
-                    // By category
-                    ForEach(groupedByCategory, id: \.category) { group in
-                        categoryGroup(group)
+                    // Income section
+                    if showIncome && !incomeEntries.isEmpty {
+                        ForEach(groupedIncome, id: \.source) { group in
+                            incomeGroup(group)
+                        }
                     }
 
-                    if payments.isEmpty {
+                    // Payments section
+                    if showPayments && !payments.isEmpty {
+                        ForEach(groupedByCategory, id: \.category) { group in
+                            categoryGroup(group)
+                        }
+                    }
+
+                    // Empty state
+                    if isEmpty {
                         ContentUnavailableView(
-                            "No Payments",
+                            emptyTitle,
                             systemImage: "doc.text",
-                            description: Text("No payments recorded for \(monthName).")
+                            description: Text("Nothing recorded for \(monthName).")
                         )
                     }
                 }
@@ -87,15 +137,31 @@ struct MonthlyView: View {
             .sheet(isPresented: $showingSubscription) {
                 SubscriptionView()
             }
-            .task { await loadPayments() }
-            .onChange(of: selectedMonth) { _, _ in Task { await loadPayments() } }
-            .onChange(of: selectedYear) { _, _ in Task { await loadPayments() } }
+            .task { await loadData() }
+            .onChange(of: selectedMonth) { _, _ in Task { await loadData() } }
+            .onChange(of: selectedYear) { _, _ in Task { await loadData() } }
+        }
+    }
+
+    // MARK: - Empty State
+
+    private var isEmpty: Bool {
+        switch selectedFilter {
+        case .all: payments.isEmpty && incomeEntries.isEmpty
+        case .payments: payments.isEmpty
+        case .income: incomeEntries.isEmpty
+        }
+    }
+
+    private var emptyTitle: String {
+        switch selectedFilter {
+        case .all: "No Activity"
+        case .payments: "No Payments"
+        case .income: "No Income"
         }
     }
 
     // MARK: - Month Selector
-
-    private var isPremium: Bool { environment.subscriptionService.isPremium }
 
     private var monthSelector: some View {
         HStack {
@@ -141,18 +207,77 @@ struct MonthlyView: View {
         .padding(.vertical, Spacing.sm)
     }
 
-    // MARK: - Total Card
+    // MARK: - Summary Cards
 
-    private var totalCard: some View {
-        let total = payments.reduce(0 as Decimal) { $0 + $1.amount }
-        return VStack(spacing: Spacing.xs) {
-            Text("Total Paid")
+    private var summaryCards: some View {
+        VStack(spacing: Spacing.md) {
+            if showIncome && showPayments {
+                // All filter — show both + net
+                HStack(spacing: Spacing.md) {
+                    summaryCard(
+                        title: "Earned",
+                        amount: totalEarned,
+                        count: incomeEntries.count,
+                        label: "deposit",
+                        color: Color.Theme.positive
+                    )
+                    summaryCard(
+                        title: "Spent",
+                        amount: totalPaid,
+                        count: payments.count,
+                        label: "payment",
+                        color: Color.Theme.negative
+                    )
+                }
+
+                // Net card
+                let net = totalEarned - totalPaid
+                VStack(spacing: Spacing.xs) {
+                    Text("Net")
+                        .font(.caption)
+                        .foregroundStyle(Color.Theme.textTertiary)
+                    Text(net.currencyFormatted)
+                        .font(.title2.weight(.bold).monospacedDigit())
+                        .foregroundStyle(net >= 0 ? Color.Theme.positive : Color.Theme.negative)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, Spacing.md)
+                .glassEffect(.regular, in: .rect(cornerRadius: CornerRadius.large))
+            } else if showIncome {
+                summaryCard(
+                    title: "Total Earned",
+                    amount: totalEarned,
+                    count: incomeEntries.count,
+                    label: "deposit",
+                    color: Color.Theme.positive
+                )
+            } else {
+                summaryCard(
+                    title: "Total Paid",
+                    amount: totalPaid,
+                    count: payments.count,
+                    label: "payment",
+                    color: Color.Theme.textPrimary
+                )
+            }
+        }
+    }
+
+    private func summaryCard(
+        title: String,
+        amount: Decimal,
+        count: Int,
+        label: String,
+        color: Color
+    ) -> some View {
+        VStack(spacing: Spacing.xs) {
+            Text(title)
                 .font(.caption)
                 .foregroundStyle(Color.Theme.textTertiary)
-            Text(total.currencyFormatted)
-                .font(.title.weight(.bold).monospacedDigit())
-                .foregroundStyle(Color.Theme.textPrimary)
-            Text("\(payments.count) payment\(payments.count == 1 ? "" : "s")")
+            Text(amount.currencyFormatted)
+                .font(.title2.weight(.bold).monospacedDigit())
+                .foregroundStyle(color)
+            Text("\(count) \(label)\(count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(Color.Theme.textTertiary)
         }
@@ -161,7 +286,52 @@ struct MonthlyView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: CornerRadius.large))
     }
 
-    // MARK: - Category Group
+    // MARK: - Income Group
+
+    private func incomeGroup(_ group: (source: String, entries: [IncomeEntry], total: Decimal)) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack {
+                Label(group.source, systemImage: "building.2.fill")
+                    .font(.headline)
+                    .foregroundStyle(Color.Theme.textPrimary)
+                Spacer()
+                Text(group.total.currencyFormatted)
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(Color.Theme.positive)
+            }
+
+            VStack(spacing: 0) {
+                ForEach(group.entries) { entry in
+                    incomeRow(entry)
+                    if entry.id != group.entries.last?.id {
+                        Divider()
+                    }
+                }
+            }
+        }
+        .padding(Spacing.lg)
+        .glassEffect(.regular, in: .rect(cornerRadius: CornerRadius.large))
+    }
+
+    private func incomeRow(_ entry: IncomeEntry) -> some View {
+        HStack(spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.source?.name ?? "Income")
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(Color.Theme.textPrimary)
+                Text(entry.date.shortFormatted)
+                    .font(.caption)
+                    .foregroundStyle(Color.Theme.textTertiary)
+            }
+            Spacer()
+            Text("+" + entry.amount.currencyFormatted)
+                .font(.body.weight(.medium).monospacedDigit())
+                .foregroundStyle(Color.Theme.positive)
+        }
+        .padding(.vertical, Spacing.xs)
+    }
+
+    // MARK: - Category Group (Payments)
 
     private func categoryGroup(_ group: (category: String, payments: [Payment], total: Decimal)) -> some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
@@ -199,8 +369,11 @@ struct MonthlyView: View {
         selectedYear = year
     }
 
-    private func loadPayments() async {
+    private func loadData() async {
         payments = (try? environment.paymentService.paymentsForMonth(
+            month: selectedMonth, year: selectedYear
+        )) ?? []
+        incomeEntries = (try? environment.incomeService.entriesForMonth(
             month: selectedMonth, year: selectedYear
         )) ?? []
         categoryData = (try? environment.paymentService.categoryTotals(
