@@ -1,0 +1,189 @@
+import SwiftUI
+import SwiftData
+
+struct BillFormView: View {
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \Category.sortOrder) private var categories: [Category]
+
+    var existingBill: Bill?
+
+    @State private var name: String = ""
+    @State private var expectedAmount: Decimal = 0
+    @State private var dueDay: Int = 1
+    @State private var frequency: BillFrequency = .monthly
+    @State private var selectedCategory: Category?
+    @State private var reminderEnabled: Bool = false
+    @State private var reminderDaysBefore: Int = 1
+    @State private var showingSubscription = false
+    @State private var showingBillLimitAlert = false
+
+    private var isEditing: Bool { existingBill != nil }
+    private var isPremium: Bool { environment.subscriptionService.isPremium }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Bill Info") {
+                    TextField("Name", text: $name)
+                    CurrencyField(title: "Expected Amount", amount: $expectedAmount)
+
+                    Picker("Frequency", selection: $frequency) {
+                        ForEach(BillFrequency.allCases, id: \.self) { freq in
+                            Text(freq.displayName).tag(freq)
+                        }
+                    }
+
+                    if frequency != .annual && frequency != .oneTime {
+                        Picker("Due Day", selection: $dueDay) {
+                            ForEach(1...31, id: \.self) { day in
+                                Text(ordinal(day)).tag(day)
+                            }
+                        }
+                    }
+
+                    if frequency == .annual || frequency == .oneTime {
+                        // For annual, we'd use a date picker instead
+                        Text("Use due date for annual/one-time bills")
+                            .font(.caption)
+                            .foregroundStyle(Color.Theme.textTertiary)
+                    }
+                }
+
+                Section("Category") {
+                    Picker("Category", selection: $selectedCategory) {
+                        Text("None").tag(nil as Category?)
+                        ForEach(categories) { category in
+                            Label(category.name, systemImage: category.icon)
+                                .tag(category as Category?)
+                        }
+                    }
+                }
+
+                Section("Reminders") {
+                    if isPremium {
+                        Toggle("Remind Me", isOn: $reminderEnabled)
+                        if reminderEnabled {
+                            Picker("When", selection: $reminderDaysBefore) {
+                                Text("Day of").tag(0)
+                                Text("1 day before").tag(1)
+                                Text("3 days before").tag(3)
+                                Text("7 days before").tag(7)
+                            }
+                        }
+                    } else {
+                        Button {
+                            showingSubscription = true
+                        } label: {
+                            HStack {
+                                Label("Remind Me", systemImage: "bell")
+                                Spacer()
+                                Label("Remnant+", systemImage: "star.fill")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(Color.Theme.premium)
+                            }
+                        }
+                    }
+                }
+
+                if isEditing {
+                    Section {
+                        Button("Archive Bill", role: .destructive) {
+                            if let bill = existingBill {
+                                environment.billService.archive(bill)
+                                try? environment.billService.save()
+                                dismiss()
+                            }
+                        }
+                    }
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.Theme.background)
+            .navigationTitle(isEditing ? "Edit Bill" : "Add Bill")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveBill() }
+                        .disabled(name.isEmpty)
+                        .fontWeight(.semibold)
+                }
+            }
+            .onAppear { loadExisting() }
+            .sheet(isPresented: $showingSubscription) {
+                SubscriptionView()
+            }
+            .alert("Bill Limit Reached", isPresented: $showingBillLimitAlert) {
+                Button("Upgrade") { showingSubscription = true }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("Free accounts can have up to \(SubscriptionService.freeBillLimit) bills. Upgrade to Remnant+ for unlimited bills.")
+            }
+        }
+    }
+
+    private func loadExisting() {
+        guard let bill = existingBill else { return }
+        name = bill.name
+        expectedAmount = bill.expectedAmount ?? 0
+        dueDay = bill.dueDay ?? 1
+        frequency = bill.frequency
+        selectedCategory = bill.category
+        reminderEnabled = bill.reminderEnabled
+        reminderDaysBefore = bill.reminderDaysBefore
+    }
+
+    private func saveBill() {
+        // Check free tier bill limit for new bills
+        if !isEditing {
+            let currentCount = (try? environment.billService.fetchAll().count) ?? 0
+            if !environment.subscriptionService.canAddBill(currentCount: currentCount) {
+                showingBillLimitAlert = true
+                return
+            }
+        }
+
+        if let bill = existingBill {
+            bill.name = name
+            bill.expectedAmount = expectedAmount > 0 ? expectedAmount : nil
+            bill.dueDay = dueDay
+            bill.frequency = frequency
+            bill.category = selectedCategory
+            bill.reminderEnabled = reminderEnabled
+            bill.reminderDaysBefore = reminderDaysBefore
+            try? environment.billService.save()
+
+            if reminderEnabled {
+                environment.reminderService.scheduleReminder(for: bill)
+            } else {
+                environment.reminderService.removeReminder(for: bill)
+            }
+        } else {
+            let bill = environment.billService.create(
+                name: name,
+                expectedAmount: expectedAmount > 0 ? expectedAmount : nil,
+                dueDay: dueDay,
+                dueDate: nil,
+                frequency: frequency,
+                category: selectedCategory
+            )
+            try? environment.billService.save()
+
+            if reminderEnabled {
+                bill.reminderEnabled = true
+                bill.reminderDaysBefore = reminderDaysBefore
+                environment.reminderService.scheduleReminder(for: bill)
+            }
+        }
+        dismiss()
+    }
+
+    private func ordinal(_ day: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .ordinal
+        return formatter.string(from: NSNumber(value: day)) ?? "\(day)"
+    }
+}
