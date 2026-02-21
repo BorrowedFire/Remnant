@@ -9,7 +9,7 @@ struct BillDetailView: View {
     @State private var showingEdit = false
 
     private var recentPayments: [Payment] {
-        bill.payments
+        (bill.payments ?? [])
             .filter { !$0.isPlanned }
             .sorted { $0.date > $1.date }
     }

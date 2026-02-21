@@ -3,9 +3,9 @@ import SwiftData
 
 @Model
 final class IncomeEntry {
-    var id: UUID
-    var amount: Decimal
-    var date: Date
+    var id: UUID = UUID()
+    var amount: Decimal = 0
+    var date: Date = Date()
     var note: String?
 
     var source: IncomeSource?

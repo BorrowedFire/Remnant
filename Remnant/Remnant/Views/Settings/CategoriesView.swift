@@ -61,7 +61,7 @@ struct CategoriesView: View {
                 .font(.body)
                 .foregroundStyle(Color.Theme.textPrimary)
             Spacer()
-            Text("\(category.bills.count)")
+            Text("\((category.bills ?? []).count)")
                 .font(.caption)
                 .foregroundStyle(Color.Theme.textTertiary)
         }

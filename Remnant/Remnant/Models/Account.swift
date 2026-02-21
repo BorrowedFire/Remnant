@@ -9,19 +9,19 @@ enum AccountType: String, Codable, CaseIterable {
 
 @Model
 final class Account {
-    var id: UUID
-    var name: String
-    var type: AccountType
-    var currentBalance: Decimal
-    var sortOrder: Int
-    var createdAt: Date
-    var updatedAt: Date
+    var id: UUID = UUID()
+    var name: String = ""
+    var type: AccountType = AccountType.checking
+    var currentBalance: Decimal = 0
+    var sortOrder: Int = 0
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
 
     @Relationship(deleteRule: .cascade, inverse: \Payment.account)
-    var payments: [Payment]
+    var payments: [Payment]?
 
     @Relationship(deleteRule: .cascade, inverse: \IncomeEntry.account)
-    var incomeEntries: [IncomeEntry]
+    var incomeEntries: [IncomeEntry]?
 
     init(
         name: String,

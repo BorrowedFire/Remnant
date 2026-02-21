@@ -3,15 +3,15 @@ import SwiftData
 
 @Model
 final class Category {
-    var id: UUID
-    var name: String
-    var icon: String
-    var colorHex: String
-    var isDefault: Bool
-    var sortOrder: Int
+    var id: UUID = UUID()
+    var name: String = ""
+    var icon: String = "tag"
+    var colorHex: String = "AC8E68"
+    var isDefault: Bool = false
+    var sortOrder: Int = 0
 
-    @Relationship(deleteRule: .deny, inverse: \Bill.category)
-    var bills: [Bill]
+    @Relationship(deleteRule: .nullify, inverse: \Bill.category)
+    var bills: [Bill]?
 
     init(
         name: String,

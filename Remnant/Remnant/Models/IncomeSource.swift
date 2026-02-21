@@ -19,15 +19,15 @@ enum PayFrequency: String, Codable, CaseIterable {
 
 @Model
 final class IncomeSource {
-    var id: UUID
-    var name: String
-    var frequency: PayFrequency
+    var id: UUID = UUID()
+    var name: String = ""
+    var frequency: PayFrequency = PayFrequency.biweekly
     var expectedAmount: Decimal?
-    var isActive: Bool
-    var createdAt: Date
+    var isActive: Bool = true
+    var createdAt: Date = Date()
 
     @Relationship(deleteRule: .cascade, inverse: \IncomeEntry.source)
-    var entries: [IncomeEntry]
+    var entries: [IncomeEntry]?
 
     init(
         name: String,

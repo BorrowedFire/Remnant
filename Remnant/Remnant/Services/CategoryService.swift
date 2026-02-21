@@ -48,7 +48,7 @@ final class CategoryService {
 
     func delete(_ category: Category) throws {
         guard !category.isDefault else { return }
-        guard category.bills.isEmpty else { return }
+        guard (category.bills ?? []).isEmpty else { return }
         modelContext.delete(category)
     }
 

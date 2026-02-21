@@ -3,11 +3,11 @@ import SwiftData
 
 @Model
 final class Payment {
-    var id: UUID
-    var amount: Decimal
-    var date: Date
+    var id: UUID = UUID()
+    var amount: Decimal = 0
+    var date: Date = Date()
     var note: String?
-    var isPlanned: Bool
+    var isPlanned: Bool = false
 
     var bill: Bill?
     var account: Account?

@@ -23,22 +23,22 @@ enum BillFrequency: String, Codable, CaseIterable {
 
 @Model
 final class Bill {
-    var id: UUID
-    var name: String
+    var id: UUID = UUID()
+    var name: String = ""
     var expectedAmount: Decimal?
     var dueDay: Int?
     var dueDate: Date?
-    var frequency: BillFrequency
-    var isActive: Bool
-    var reminderEnabled: Bool
-    var reminderDaysBefore: Int
-    var sortOrder: Int
-    var createdAt: Date
+    var frequency: BillFrequency = BillFrequency.monthly
+    var isActive: Bool = true
+    var reminderEnabled: Bool = false
+    var reminderDaysBefore: Int = 1
+    var sortOrder: Int = 0
+    var createdAt: Date = Date()
 
     var category: Category?
 
     @Relationship(deleteRule: .cascade, inverse: \Payment.bill)
-    var payments: [Payment]
+    var payments: [Payment]?
 
     init(
         name: String,
@@ -96,7 +96,7 @@ final class Bill {
     func totalPaidThisYear(in year: Int? = nil) -> Decimal {
         let calendar = Calendar.current
         let targetYear = year ?? calendar.component(.year, from: Date())
-        return payments
+        return (payments ?? [])
             .filter { !$0.isPlanned && calendar.component(.year, from: $0.date) == targetYear }
             .reduce(0) { $0 + $1.amount }
     }
@@ -104,7 +104,7 @@ final class Bill {
     /// Total paid in a specific month
     func totalPaid(month: Int, year: Int) -> Decimal {
         let calendar = Calendar.current
-        return payments
+        return (payments ?? [])
             .filter {
                 !$0.isPlanned
                 && calendar.component(.year, from: $0.date) == year

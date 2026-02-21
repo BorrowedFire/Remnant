@@ -110,7 +110,7 @@ struct BillListView: View {
     }
 
     private func billsInCategory(_ category: Category) -> [Bill] {
-        category.bills
+        (category.bills ?? [])
             .filter { $0.isActive }
             .filter { searchText.isEmpty || $0.name.localizedCaseInsensitiveContains(searchText) }
             .sorted { $0.sortOrder < $1.sortOrder }

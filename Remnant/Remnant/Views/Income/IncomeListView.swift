@@ -73,9 +73,9 @@ struct IncomeListView: View {
                 }
             }
 
-            if !source.entries.isEmpty {
+            if !(source.entries ?? []).isEmpty {
                 Divider()
-                ForEach(source.entries.sorted(by: { $0.date > $1.date }).prefix(3)) { entry in
+                ForEach((source.entries ?? []).sorted(by: { $0.date > $1.date }).prefix(3)) { entry in
                     HStack {
                         Text(entry.date.shortFormatted)
                             .font(.caption)

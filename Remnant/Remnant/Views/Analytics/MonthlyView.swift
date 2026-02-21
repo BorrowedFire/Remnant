@@ -176,9 +176,9 @@ struct MonthlyView: View {
             }
 
             VStack(spacing: 0) {
-                ForEach(group.payments) { payment in
+                ForEach(group.payments ?? []) { payment in
                     PaymentRow(payment: payment)
-                    if payment.id != group.payments.last?.id {
+                    if payment.id != (group.payments ?? []).last?.id {
                         Divider()
                     }
                 }

@@ -11,11 +11,24 @@ struct RemnantApp: App {
             Account.self, Category.self, IncomeSource.self,
             IncomeEntry.self, Bill.self, Payment.self
         ])
-        let config = ModelConfiguration(
-            schema: schema,
-            cloudKitDatabase: .private("iCloud.com.borrowedfire.remnant")
-        )
-        let container = try! ModelContainer(for: schema, configurations: [config])
+
+        let container: ModelContainer
+        do {
+            let config = ModelConfiguration(
+                schema: schema,
+                cloudKitDatabase: .private("iCloud.com.borrowedfire.remnant")
+            )
+            container = try ModelContainer(for: schema, configurations: [config])
+        } catch {
+            // Fallback to local-only store (simulator or missing CloudKit entitlement)
+            do {
+                let localConfig = ModelConfiguration(schema: schema)
+                container = try ModelContainer(for: schema, configurations: [localConfig])
+            } catch {
+                fatalError("Failed to create ModelContainer: \(error)")
+            }
+        }
+
         self.container = container
         self.environment = AppEnvironment.production(modelContext: container.mainContext)
     }
