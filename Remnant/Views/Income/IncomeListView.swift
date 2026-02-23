@@ -102,6 +102,8 @@ struct IncomeSourceForm: View {
     @State private var name = ""
     @State private var frequency: PayFrequency = .biweekly
     @State private var expectedAmount: Decimal = 0
+    @State private var anchorDate: Date = Date()
+    @State private var hasAnchorDate: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -114,6 +116,17 @@ struct IncomeSourceForm: View {
                         }
                     }
                     CurrencyField(title: "Expected Amount (optional)", amount: $expectedAmount)
+                }
+
+                Section {
+                    Toggle("Track Pay Schedule", isOn: $hasAnchorDate)
+                    if hasAnchorDate {
+                        DatePicker("Last Paycheck Date", selection: $anchorDate, displayedComponents: .date)
+                    }
+                } footer: {
+                    if hasAnchorDate {
+                        Text("Used to predict your next payday and suggest recording income.")
+                    }
                 }
             }
             .scrollContentBackground(.hidden)
@@ -129,7 +142,8 @@ struct IncomeSourceForm: View {
                         _ = environment.incomeService.createSource(
                             name: name,
                             frequency: frequency,
-                            expectedAmount: expectedAmount > 0 ? expectedAmount : nil
+                            expectedAmount: expectedAmount > 0 ? expectedAmount : nil,
+                            anchorDate: hasAnchorDate ? anchorDate : nil
                         )
                         try? environment.incomeService.save()
                         dismiss()

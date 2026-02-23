@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 @main
 struct RemnantApp: App {
@@ -44,6 +45,8 @@ struct RemnantApp: App {
                     await environment.subscriptionService.loadProducts()
                     await environment.subscriptionService.refreshEntitlements()
                     await environment.reminderService.checkAuthorizationStatus()
+                    environment.reminderService.registerCategories()
+                    UNUserNotificationCenter.current().delegate = environment.notificationActionHandler
                 }
         }
     }

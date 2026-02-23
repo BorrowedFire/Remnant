@@ -39,6 +39,19 @@ final class PaymentService {
         return payment
     }
 
+    // MARK: - Quick Confirm
+
+    /// Records a payment for a bill's expected amount. Returns nil if the bill has no expected amount.
+    func quickConfirmBill(_ bill: Bill, account: Account?) -> Payment? {
+        guard let amount = bill.expectedAmount, amount > 0 else { return nil }
+        return recordPayment(bill: bill, amount: amount, account: account)
+    }
+
+    /// Batch-confirms all provided bills using their expected amounts.
+    func batchConfirmBills(_ bills: [Bill], account: Account?) -> [Payment] {
+        bills.compactMap { quickConfirmBill($0, account: account) }
+    }
+
     // MARK: - Planning Mode
 
     func createPlannedPayment(

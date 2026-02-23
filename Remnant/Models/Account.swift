@@ -17,6 +17,9 @@ final class Account {
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
+    /// Linked Apple FinanceKit account identifier for auto-sync.
+    var financeKitAccountID: String?
+
     @Relationship(deleteRule: .cascade, inverse: \Payment.account)
     var payments: [Payment]?
 

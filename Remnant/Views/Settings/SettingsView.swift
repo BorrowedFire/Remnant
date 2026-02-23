@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showingCategories = false
     @State private var showingAccountLimitAlert = false
     @State private var showingExportSheet = false
+    @State private var showingImport = false
+    @State private var showingFinanceKit = false
     @State private var showingDeleteConfirmation = false
     @State private var accountToDelete: Account?
     @State private var showingCurrencyWarning = false
@@ -102,8 +104,12 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Export") {
+                Section("Import & Export") {
                     if isPremium {
+                        Button("Import Transactions", systemImage: "square.and.arrow.down") {
+                            showingImport = true
+                        }
+
                         Picker("Year", selection: $exportYear) {
                             let currentYear = Calendar.current.component(.year, from: Date())
                             ForEach((currentYear - 5)...currentYear, id: \.self) { year in
@@ -119,12 +125,32 @@ struct SettingsView: View {
                             showingSubscription = true
                         } label: {
                             HStack {
+                                Label("Import Transactions", systemImage: "square.and.arrow.down")
+                                Spacer()
+                                Label("Remnant+", systemImage: "star.fill")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(Color.Theme.premium)
+                            }
+                        }
+
+                        Button {
+                            showingSubscription = true
+                        } label: {
+                            HStack {
                                 Label("Export CSV", systemImage: "square.and.arrow.up")
                                 Spacer()
                                 Label("Remnant+", systemImage: "star.fill")
                                     .font(.caption.weight(.medium))
                                     .foregroundStyle(Color.Theme.premium)
                             }
+                        }
+                    }
+                }
+
+                if isPremium, let fkService = environment.financeKitService, fkService.isAvailable {
+                    Section("Connected Accounts") {
+                        Button("Apple Wallet", systemImage: "wallet.bifold") {
+                            showingFinanceKit = true
                         }
                     }
                 }
@@ -202,6 +228,12 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingCategories) {
                 CategoriesView()
+            }
+            .sheet(isPresented: $showingImport) {
+                ImportView()
+            }
+            .sheet(isPresented: $showingFinanceKit) {
+                FinanceKitLinkView()
             }
             .sheet(isPresented: $showingExportSheet) {
                 if let url = exportURL {

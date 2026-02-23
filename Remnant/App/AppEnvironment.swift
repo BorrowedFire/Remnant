@@ -13,6 +13,8 @@ final class AppEnvironment {
     let reminderService: ReminderService
     let subscriptionService: SubscriptionService
     let exportService: ExportService
+    let notificationActionHandler: NotificationActionHandler
+    let financeKitService: FinanceKitService?
 
     private static var _shared: AppEnvironment?
 
@@ -37,11 +39,23 @@ final class AppEnvironment {
         let accountService = AccountService(modelContext: modelContext)
         self.accountService = accountService
         self.billService = BillService(modelContext: modelContext)
-        self.paymentService = PaymentService(modelContext: modelContext, accountService: accountService)
+        let paymentService = PaymentService(modelContext: modelContext, accountService: accountService)
+        self.paymentService = paymentService
         self.incomeService = IncomeService(modelContext: modelContext, accountService: accountService)
         self.categoryService = CategoryService(modelContext: modelContext)
-        self.reminderService = ReminderService()
+        let reminderService = ReminderService()
+        self.reminderService = reminderService
         self.subscriptionService = SubscriptionService()
         self.exportService = ExportService(modelContext: modelContext)
+        self.notificationActionHandler = NotificationActionHandler(
+            modelContext: modelContext,
+            paymentService: paymentService,
+            accountService: accountService,
+            reminderService: reminderService
+        )
+        self.financeKitService = FinanceKitService(
+            modelContext: modelContext,
+            accountService: accountService
+        )
     }
 }

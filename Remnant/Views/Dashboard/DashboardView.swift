@@ -10,6 +10,13 @@ struct DashboardView: View {
     @State private var showingSettings = false
     @State private var showingAddPayment = false
     @State private var showingAddIncome = false
+    @State private var recentPayments: [Payment] = []
+    @State private var undoLabel: String = ""
+    @State private var undoAmount: Decimal = 0
+    @State private var showingUndoToast = false
+    @State private var undoTask: Task<Void, Never>?
+    @State private var pendingIncome: [IncomeSource] = []
+    @State private var recentIncomeEntry: IncomeEntry?
 
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -44,6 +51,12 @@ struct DashboardView: View {
                 IncomeEntryForm()
             }
             .task { await refreshData() }
+            .overlay(alignment: .bottom) {
+                if showingUndoToast {
+                    undoToast
+                        .padding(.bottom, Spacing.lg)
+                }
+            }
         }
     }
 
@@ -54,6 +67,9 @@ struct DashboardView: View {
             balanceSection
             if !accounts.isEmpty {
                 monthSummary
+                if !pendingIncome.isEmpty {
+                    incomeSuggestionSection
+                }
                 upcomingBillsSection
                 quickActions
             }
@@ -173,12 +189,89 @@ struct DashboardView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(upcomingBills) { bill in
-                        BillRow(bill: bill)
+                        HStack(spacing: Spacing.sm) {
+                            BillRow(bill: bill)
+
+                            if bill.expectedAmount != nil {
+                                Button {
+                                    quickPay(bill: bill)
+                                } label: {
+                                    Image(systemName: "checkmark.circle")
+                                        .font(.title3)
+                                        .foregroundStyle(Color.Theme.positive)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Mark \(bill.name) as paid")
+                            }
+                        }
                         if bill.id != upcomingBills.last?.id {
                             Divider().padding(.leading, Spacing.lg)
                         }
                     }
                 }
+
+                if payableBills.count > 1 {
+                    Button {
+                        payAllDue()
+                    } label: {
+                        Label("Pay All Due", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Spacing.sm)
+                            .foregroundStyle(Color.Theme.positive)
+                    }
+                    .glassEffect(.regular.tint(Color.Theme.positive.opacity(0.15)).interactive(), in: .rect(cornerRadius: CornerRadius.medium))
+                    .accessibilityLabel("Pay all \(payableBills.count) upcoming bills")
+                }
+            }
+        }
+        .padding(Spacing.lg)
+        .glassEffect(.regular, in: .rect(cornerRadius: CornerRadius.large))
+    }
+
+    private var payableBills: [Bill] {
+        upcomingBills.filter { $0.expectedAmount != nil }
+    }
+
+    // MARK: - Income Suggestions
+
+    private var incomeSuggestionSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Payday")
+                .font(.headline)
+                .foregroundStyle(Color.Theme.textPrimary)
+
+            ForEach(pendingIncome) { source in
+                HStack(spacing: Spacing.md) {
+                    Image(systemName: "banknote")
+                        .font(.title3)
+                        .foregroundStyle(Color.Theme.positive)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(source.name)
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(Color.Theme.textPrimary)
+                        if let amount = source.expectedAmount {
+                            Text(amount.currencyFormatted)
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(Color.Theme.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        quickRecordIncome(source: source)
+                    } label: {
+                        Text("Record")
+                            .font(.subheadline.weight(.medium))
+                            .padding(.horizontal, Spacing.md)
+                            .padding(.vertical, Spacing.xs)
+                            .foregroundStyle(Color.Theme.positive)
+                    }
+                    .glassEffect(.regular.tint(Color.Theme.positive.opacity(0.15)).interactive(), in: .capsule)
+                }
+                .padding(.vertical, Spacing.xs)
             }
         }
         .padding(Spacing.lg)
@@ -215,11 +308,114 @@ struct DashboardView: View {
         }
     }
 
+    // MARK: - Undo Toast
+
+    private var undoToast: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(Color.Theme.positive)
+            Text("Paid \(undoLabel) — \(undoAmount.currencyFormatted)")
+                .font(.subheadline)
+                .foregroundStyle(Color.Theme.textPrimary)
+            Spacer()
+            Button("Undo") {
+                undoLastPayment()
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.Theme.info)
+        }
+        .padding(Spacing.md)
+        .glassEffect(.regular, in: .rect(cornerRadius: CornerRadius.medium))
+        .padding(.horizontal, Spacing.lg)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    // MARK: - Actions
+
+    private func quickRecordIncome(source: IncomeSource) {
+        guard let account = accounts.first else { return }
+        guard let entry = environment.incomeService.quickRecordIncome(source: source, account: account) else { return }
+        try? environment.incomeService.save()
+
+        undoLabel = source.name
+        undoAmount = entry.amount
+        recentPayments = []
+        recentIncomeEntry = entry
+        showUndoToast()
+
+        Task { await refreshData() }
+    }
+
+    private func quickPay(bill: Bill) {
+        guard let account = accounts.first else { return }
+        guard let payment = environment.paymentService.quickConfirmBill(bill, account: account) else { return }
+        try? environment.paymentService.save()
+
+        undoLabel = bill.name
+        undoAmount = payment.amount
+        recentPayments = [payment]
+        recentIncomeEntry = nil
+        showUndoToast()
+
+        Task { await refreshData() }
+    }
+
+    private func payAllDue() {
+        guard let account = accounts.first else { return }
+        let payments = environment.paymentService.batchConfirmBills(payableBills, account: account)
+        guard !payments.isEmpty else { return }
+        try? environment.paymentService.save()
+
+        undoLabel = "\(payments.count) bills"
+        undoAmount = payments.reduce(0) { $0 + $1.amount }
+        recentPayments = payments
+        recentIncomeEntry = nil
+        showUndoToast()
+
+        Task { await refreshData() }
+    }
+
+    private func showUndoToast() {
+        undoTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showingUndoToast = true
+        }
+        undoTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.25)) {
+                showingUndoToast = false
+                recentPayments = []
+                recentIncomeEntry = nil
+            }
+        }
+    }
+
+    private func undoLastPayment() {
+        undoTask?.cancel()
+        if !recentPayments.isEmpty {
+            for payment in recentPayments {
+                environment.paymentService.deletePayment(payment)
+            }
+            try? environment.paymentService.save()
+        } else if let entry = recentIncomeEntry {
+            environment.incomeService.deleteEntry(entry)
+            try? environment.incomeService.save()
+        }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showingUndoToast = false
+            recentPayments = []
+            recentIncomeEntry = nil
+        }
+        Task { await refreshData() }
+    }
+
     // MARK: - Data
 
     private func refreshData() async {
         upcomingBills = (try? environment.billService.upcomingBills()) ?? []
         totalPaidThisMonth = (try? environment.paymentService.totalPaidThisMonth()) ?? 0
         totalIncomeThisMonth = (try? environment.incomeService.totalIncomeThisMonth()) ?? 0
+        pendingIncome = (try? environment.incomeService.pendingIncomeToday()) ?? []
     }
 }
