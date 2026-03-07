@@ -1,0 +1,132 @@
+import Foundation
+import UserNotifications
+import Observation
+
+@MainActor
+@Observable
+final class ReminderService {
+    static let billReminderCategory = "BILL_REMINDER"
+    static let markPaidAction = "MARK_PAID"
+    static let snoozeAction = "SNOOZE"
+
+    var isAuthorized = false
+
+    func requestAuthorization() async {
+        do {
+            let granted = try await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .badge, .sound])
+            isAuthorized = granted
+        } catch {
+            isAuthorized = false
+        }
+    }
+
+    func checkAuthorizationStatus() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        isAuthorized = settings.authorizationStatus == .authorized
+    }
+
+    /// Registers notification categories with actionable buttons.
+    func registerCategories() {
+        let markPaid = UNNotificationAction(
+            identifier: Self.markPaidAction,
+            title: "Mark Paid",
+            options: []
+        )
+        let snooze = UNNotificationAction(
+            identifier: Self.snoozeAction,
+            title: "Remind Tomorrow",
+            options: []
+        )
+        let billCategory = UNNotificationCategory(
+            identifier: Self.billReminderCategory,
+            actions: [markPaid, snooze],
+            intentIdentifiers: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([billCategory])
+    }
+
+    // MARK: - Schedule
+
+    func scheduleReminder(for bill: Bill) {
+        guard bill.reminderEnabled, isAuthorized else { return }
+        removeReminder(for: bill)
+
+        guard let nextDue = bill.nextDueDate else { return }
+        let calendar = Calendar.current
+        guard let reminderDate = calendar.date(
+            byAdding: .day,
+            value: -bill.reminderDaysBefore,
+            to: nextDue
+        ) else { return }
+
+        // Don't schedule if reminder date is in the past
+        guard reminderDate > Date() else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Bill Due"
+        if bill.reminderDaysBefore == 0 {
+            content.body = "\(bill.name) is due today"
+        } else {
+            content.body = "\(bill.name) is due in \(bill.reminderDaysBefore) day\(bill.reminderDaysBefore == 1 ? "" : "s")"
+        }
+        if let amount = bill.expectedAmount {
+            content.body += " — \(amount.currencyFormatted)"
+        }
+        content.sound = .default
+        content.categoryIdentifier = Self.billReminderCategory
+        content.userInfo = [
+            "billID": bill.id.uuidString,
+            "billName": bill.name
+        ]
+
+        guard let notificationDate = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: reminderDate) else { return }
+        let components = calendar.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: notificationDate
+        )
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "bill-\(bill.id.uuidString)",
+            content: content,
+            trigger: trigger
+        )
+
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func removeReminder(for bill: Bill) {
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: ["bill-\(bill.id.uuidString)"])
+    }
+
+    /// Reschedules a notification for tomorrow at 9 AM (snooze).
+    func snoozeBillReminder(billID: String, billName: String, bodyText: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Bill Due"
+        content.body = bodyText
+        content.sound = .default
+        content.categoryIdentifier = Self.billReminderCategory
+        content.userInfo = ["billID": billID, "billName": billName]
+
+        let calendar = Calendar.current
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: Date()),
+              let notificationDate = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: tomorrow) else { return }
+
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: notificationDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "bill-\(billID)",
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func rescheduleAll(bills: [Bill]) {
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        for bill in bills where bill.reminderEnabled && bill.isActive {
+            scheduleReminder(for: bill)
+        }
+    }
+}
