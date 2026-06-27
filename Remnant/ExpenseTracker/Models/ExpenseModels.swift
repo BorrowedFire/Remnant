@@ -119,6 +119,42 @@ enum ExpenseReviewIssue: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+struct CSVColumnMapping: Codable, Equatable {
+    var dateHeader: String = ""
+    var merchantHeader: String = ""
+    var amountHeader: String = ""
+    var debitHeader: String = ""
+    var creditHeader: String = ""
+    var categoryHeader: String = ""
+    var accountHeader: String = ""
+    var paymentMethodHeader: String = ""
+    var noteHeader: String = ""
+    var receiptHeader: String = ""
+    var transactionTypeHeader: String = ""
+    var directionHeader: String = ""
+    var currencyHeader: String = ""
+
+    var mappedCount: Int {
+        [
+            dateHeader,
+            merchantHeader,
+            amountHeader,
+            debitHeader,
+            creditHeader,
+            categoryHeader,
+            accountHeader,
+            paymentMethodHeader,
+            noteHeader,
+            receiptHeader,
+            transactionTypeHeader,
+            directionHeader,
+            currencyHeader
+        ]
+        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        .count
+    }
+}
+
 @Model
 final class Expense {
     var id: UUID = UUID()
@@ -190,6 +226,76 @@ final class Expense {
         self.importBatchID = importBatchID
         self.createdAt = Date()
         self.updatedAt = Date()
+    }
+}
+
+@Model
+final class CSVImportProfile {
+    var id: UUID = UUID()
+    var name: String = ""
+    var importMode: ExpenseImportMode = ExpenseImportMode.statementReview
+    var dateHeader: String = ""
+    var merchantHeader: String = ""
+    var amountHeader: String = ""
+    var debitHeader: String = ""
+    var creditHeader: String = ""
+    var categoryHeader: String = ""
+    var accountHeader: String = ""
+    var paymentMethodHeader: String = ""
+    var noteHeader: String = ""
+    var receiptHeader: String = ""
+    var transactionTypeHeader: String = ""
+    var directionHeader: String = ""
+    var currencyHeader: String = ""
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+
+    init(
+        name: String,
+        importMode: ExpenseImportMode = .statementReview,
+        mapping: CSVColumnMapping = CSVColumnMapping()
+    ) {
+        self.id = UUID()
+        self.name = name
+        self.importMode = importMode
+        self.createdAt = Date()
+        self.updatedAt = Date()
+        apply(mapping: mapping)
+    }
+
+    var mapping: CSVColumnMapping {
+        CSVColumnMapping(
+            dateHeader: dateHeader,
+            merchantHeader: merchantHeader,
+            amountHeader: amountHeader,
+            debitHeader: debitHeader,
+            creditHeader: creditHeader,
+            categoryHeader: categoryHeader,
+            accountHeader: accountHeader,
+            paymentMethodHeader: paymentMethodHeader,
+            noteHeader: noteHeader,
+            receiptHeader: receiptHeader,
+            transactionTypeHeader: transactionTypeHeader,
+            directionHeader: directionHeader,
+            currencyHeader: currencyHeader
+        )
+    }
+
+    func apply(mapping: CSVColumnMapping) {
+        dateHeader = mapping.dateHeader
+        merchantHeader = mapping.merchantHeader
+        amountHeader = mapping.amountHeader
+        debitHeader = mapping.debitHeader
+        creditHeader = mapping.creditHeader
+        categoryHeader = mapping.categoryHeader
+        accountHeader = mapping.accountHeader
+        paymentMethodHeader = mapping.paymentMethodHeader
+        noteHeader = mapping.noteHeader
+        receiptHeader = mapping.receiptHeader
+        transactionTypeHeader = mapping.transactionTypeHeader
+        directionHeader = mapping.directionHeader
+        currencyHeader = mapping.currencyHeader
+        updatedAt = Date()
     }
 }
 

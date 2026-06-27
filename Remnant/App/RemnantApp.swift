@@ -104,6 +104,7 @@ enum RemnantStore {
             ReceiptAttachment.self,
             ExpenseCategory.self,
             BusinessDimension.self,
+            CSVImportProfile.self,
             ImportBatch.self,
             VendorRule.self
         ])
