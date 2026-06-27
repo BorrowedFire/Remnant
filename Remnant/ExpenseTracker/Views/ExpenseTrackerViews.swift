@@ -1970,7 +1970,7 @@ private enum ReportExportScope: String, CaseIterable, Identifiable {
 
     var filenameSuffix: String {
         switch self {
-        case .all: "expenses"
+        case .all: "all"
         case .billableOrReimbursable: "follow-up-expenses"
         case .billable: "billable-expenses"
         case .reimbursable: "reimbursable-expenses"
@@ -1992,6 +1992,41 @@ private enum ReportExportScope: String, CaseIterable, Identifiable {
     }
 }
 
+private enum ReportExportKind: String, CaseIterable, Identifiable {
+    case rawExpenses
+    case taxBucketSummary
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .rawExpenses: "Raw Expenses"
+        case .taxBucketSummary: "Tax Summary"
+        }
+    }
+
+    var filenameSuffix: String {
+        switch self {
+        case .rawExpenses: "expenses"
+        case .taxBucketSummary: "tax-bucket-summary"
+        }
+    }
+}
+
+private enum ReportDateRange: String, CaseIterable, Identifiable {
+    case taxYear
+    case custom
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .taxYear: "Tax Year"
+        case .custom: "Custom Dates"
+        }
+    }
+}
+
 struct ReportsView: View {
     @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
     private var expenses: [Expense]
@@ -1999,47 +2034,118 @@ struct ReportsView: View {
     private var categories: [ExpenseCategory]
 
     @State private var taxYear = Calendar.current.component(.year, from: Date())
+    @State private var dateRange = ReportDateRange.taxYear
+    @State private var customStartDate = Calendar.current.date(from: DateComponents(year: Calendar.current.component(.year, from: Date()), month: 1, day: 1)) ?? Date()
+    @State private var customEndDate = Date()
+    @State private var exportKind = ReportExportKind.rawExpenses
     @State private var exportScope = ReportExportScope.all
     @State private var isExportingCSV = false
     @State private var exportError: String?
 
-    private var expensesForYear: [Expense] {
-        let interval = ExpenseLedger.yearInterval(taxYear)
+    private var selectedInterval: DateInterval {
+        switch dateRange {
+        case .taxYear:
+            return ExpenseLedger.yearInterval(taxYear)
+        case .custom:
+            let range = normalizedCustomRange
+            return DateInterval(
+                start: range.start,
+                end: Calendar.current.date(byAdding: .day, value: 1, to: range.end) ?? range.end.addingTimeInterval(86_400)
+            )
+        }
+    }
+
+    private var normalizedCustomRange: (start: Date, end: Date) {
+        let orderedStart = min(customStartDate, customEndDate)
+        let orderedEnd = max(customStartDate, customEndDate)
+        return (
+            start: Calendar.current.startOfDay(for: orderedStart),
+            end: Calendar.current.startOfDay(for: orderedEnd)
+        )
+    }
+
+    private var expensesForRange: [Expense] {
+        let interval = selectedInterval
         return expenses.filter { interval.contains($0.date) && $0.status != .ignored }
     }
 
     private var expensesForExport: [Expense] {
-        exportScope.expenses(in: expensesForYear)
+        exportScope.expenses(in: expensesForRange)
     }
 
     private var exportCSV: String {
-        ExpenseLedger.exportCSV(expenses: expensesForExport, categories: categories)
+        switch exportKind {
+        case .rawExpenses:
+            ExpenseLedger.exportCSV(expenses: expensesForExport, categories: categories)
+        case .taxBucketSummary:
+            ExpenseLedger.exportTaxBucketSummaryCSV(expenses: expensesForExport, categories: categories)
+        }
+    }
+
+    private var exportFilename: String {
+        let rangeSuffix: String
+        switch dateRange {
+        case .taxYear:
+            rangeSuffix = "\(taxYear)"
+        case .custom:
+            let range = normalizedCustomRange
+            rangeSuffix = "\(filenameDateFormatter.string(from: range.start))-\(filenameDateFormatter.string(from: range.end))"
+        }
+        return "remnant-\(rangeSuffix)-\(exportScope.filenameSuffix)-\(exportKind.filenameSuffix).csv"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             header("Reports", subtitle: "Exportable summaries for accountant and tax review.")
 
-            HStack(spacing: Spacing.md) {
-                Picker("Tax Year", selection: $taxYear) {
-                    ForEach((2023...Calendar.current.component(.year, from: Date()) + 1), id: \.self) { year in
-                        Text("\(year)").tag(year)
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack(spacing: Spacing.md) {
+                    Picker("Date Range", selection: $dateRange) {
+                        ForEach(ReportDateRange.allCases) { range in
+                            Text(range.label).tag(range)
+                        }
                     }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 180)
+                    .pickerStyle(.menu)
+                    .frame(width: 180)
 
-                Picker("Export Scope", selection: $exportScope) {
-                    ForEach(ReportExportScope.allCases) { scope in
-                        Text(scope.label).tag(scope)
+                    Picker("Tax Year", selection: $taxYear) {
+                        ForEach((2023...Calendar.current.component(.year, from: Date()) + 1), id: \.self) { year in
+                            Text("\(year)").tag(year)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 180)
+                    .disabled(dateRange != .taxYear)
+
+                    if dateRange == .custom {
+                        DatePicker("Start", selection: $customStartDate, displayedComponents: .date)
+                            .frame(width: 180)
+                        DatePicker("End", selection: $customEndDate, displayedComponents: .date)
+                            .frame(width: 180)
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(width: 220)
+
+                HStack(spacing: Spacing.md) {
+                    Picker("Export", selection: $exportKind) {
+                        ForEach(ReportExportKind.allCases) { kind in
+                            Text(kind.label).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 180)
+
+                    Picker("Export Scope", selection: $exportScope) {
+                        ForEach(ReportExportScope.allCases) { scope in
+                            Text(scope.label).tag(scope)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
+                }
             }
 
             HStack(spacing: Spacing.lg) {
-                metric("Year Total", ExpenseLedger.totalSpent(in: expenses, for: ExpenseLedger.yearInterval(taxYear)).currencyFormatted)
+                metric("Range Total", ExpenseLedger.totalSpent(in: expenses, for: selectedInterval).currencyFormatted)
                 metric("Export Rows", "\(expensesForExport.count)")
             }
 
@@ -2070,7 +2176,7 @@ struct ReportsView: View {
             isPresented: $isExportingCSV,
             document: ExpenseCSVDocument(csv: exportCSV),
             contentType: .commaSeparatedText,
-            defaultFilename: "remnant-\(taxYear)-\(exportScope.filenameSuffix).csv"
+            defaultFilename: exportFilename
         ) { result in
             if case .failure(let error) = result {
                 exportError = error.localizedDescription
@@ -2078,6 +2184,14 @@ struct ReportsView: View {
                 exportError = nil
             }
         }
+    }
+
+    private var filenameDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
     }
 }
 

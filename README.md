@@ -21,7 +21,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Local account, vendor, client, and project dimensions for filtering and export
 - Billable and reimbursable expense flags with follow-up filters and scoped CSV export
 - Local vendor rules for categorizing recurring merchants without connecting to a service
-- Tax-year report view with formula-safe CSV preview and file export including tax buckets
+- Report view with formula-safe raw expense, tax-bucket summary, and billable/reimbursable CSV exports by tax year or custom date range
 - Settings view for local vendor rules and privacy guarantees
 
 ## Privacy Model
