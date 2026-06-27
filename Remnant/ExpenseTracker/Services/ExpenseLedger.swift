@@ -95,6 +95,8 @@ enum ExpenseLedger {
             "Vendor",
             "Client",
             "Project",
+            "Billable",
+            "Reimbursable",
             "Status",
             "Source",
             "Payment Account",
@@ -118,6 +120,8 @@ enum ExpenseLedger {
                     dimensionValue(for: expense, kind: .vendor),
                     dimensionValue(for: expense, kind: .client),
                     dimensionValue(for: expense, kind: .project),
+                    yesNo(isBillable(expense)),
+                    yesNo(isReimbursable(expense)),
                     expense.status.rawValue,
                     expense.source.rawValue,
                     expense.paymentAccount,
@@ -174,6 +178,26 @@ enum ExpenseLedger {
         }
     }
 
+    static func isBillable(_ expense: Expense) -> Bool {
+        expense.isBillable
+    }
+
+    static func isReimbursable(_ expense: Expense) -> Bool {
+        expense.isReimbursable || expense.status == .reimbursable
+    }
+
+    static func outstandingBillableExpenses(in expenses: [Expense]) -> [Expense] {
+        expenses.filter { $0.status != .ignored && isBillable($0) }
+    }
+
+    static func outstandingReimbursableExpenses(in expenses: [Expense]) -> [Expense] {
+        expenses.filter { $0.status != .ignored && isReimbursable($0) }
+    }
+
+    static func outstandingFollowUpExpenses(in expenses: [Expense]) -> [Expense] {
+        expenses.filter { $0.status != .ignored && (isBillable($0) || isReimbursable($0)) }
+    }
+
     static func monthInterval(containing date: Date) -> DateInterval {
         let calendar = Calendar.current
         let start = calendar.date(from: calendar.dateComponents([.year, .month], from: date)) ?? date
@@ -204,6 +228,10 @@ enum ExpenseLedger {
         }
         let escaped = sanitized.replacingOccurrences(of: "\"", with: "\"\"")
         return "\"\(escaped)\""
+    }
+
+    private static func yesNo(_ value: Bool) -> String {
+        value ? "Yes" : "No"
     }
 
     static func isBlank(_ value: String?) -> Bool {

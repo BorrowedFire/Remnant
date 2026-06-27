@@ -93,6 +93,23 @@ struct ExpenseLedgerTests {
         #expect(ExpenseLedger.dimensionValue(for: expense, kind: .project) == "")
     }
 
+    @Test("CSV export includes billable and reimbursable flags")
+    func csvExportIncludesBillableAndReimbursableFlags() {
+        let expense = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            clientName: "Acme",
+            projectName: "Launch",
+            isBillable: true,
+            isReimbursable: true
+        )
+
+        let csv = ExpenseLedger.exportCSV(expenses: [expense])
+
+        #expect(csv.starts(with: "\"Date\",\"Merchant\",\"Amount\",\"Currency\",\"Category\",\"Tax Bucket\",\"Account\",\"Vendor\",\"Client\",\"Project\",\"Billable\",\"Reimbursable\""))
+        #expect(csv.contains("\"Acme\",\"Launch\",\"Yes\",\"Yes\""))
+    }
+
     @Test("Expenses can be filtered by reporting dimension")
     func expensesCanBeFilteredByReportingDimension() {
         let launch = Expense(merchant: "OpenAI", amount: 20, projectName: "Launch")
@@ -101,6 +118,21 @@ struct ExpenseLedgerTests {
         let filtered = ExpenseLedger.expenses([launch, support], matching: .project, value: "launch")
 
         #expect(filtered.map(\.id) == [launch.id])
+    }
+
+    @Test("Outstanding follow-up filters use flags and legacy status")
+    func outstandingFollowUpFiltersUseFlagsAndLegacyStatus() {
+        let billable = Expense(merchant: "Design", amount: 100, isBillable: true)
+        let reimbursable = Expense(merchant: "Travel", amount: 40, isReimbursable: true)
+        let legacyReimbursable = Expense(merchant: "Legacy", amount: 25, status: .reimbursable)
+        let ignoredBillable = Expense(merchant: "Ignored", amount: 10, isBillable: true, status: .ignored)
+        let regular = Expense(merchant: "Regular", amount: 12)
+
+        let expenses = [billable, reimbursable, legacyReimbursable, ignoredBillable, regular]
+
+        #expect(ExpenseLedger.outstandingBillableExpenses(in: expenses).map(\.id) == [billable.id])
+        #expect(ExpenseLedger.outstandingReimbursableExpenses(in: expenses).map(\.id) == [reimbursable.id, legacyReimbursable.id])
+        #expect(ExpenseLedger.outstandingFollowUpExpenses(in: expenses).map(\.id) == [billable.id, reimbursable.id, legacyReimbursable.id])
     }
 
     @Test("Missing receipt filtering excludes ignored expenses")
