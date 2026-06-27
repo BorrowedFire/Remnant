@@ -1230,6 +1230,7 @@ struct ImportCenterView: View {
 
     @State private var isShowingImporter = false
     @State private var isShowingReceiptImporter = false
+    @State private var isShowingEmailImporter = false
     @State private var importMode = ExpenseImportMode.statementReview
     @State private var importSummary: ExpenseImportSummary?
     @State private var importError: String?
@@ -1245,7 +1246,7 @@ struct ImportCenterView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
-            header("Imports", subtitle: "Bring in Wave exports and receipt review files without connecting to a service.")
+            header("Imports", subtitle: "Bring in Wave exports, local receipts, and .eml receipt attachments without connecting to a service.")
 
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Picker("Import Mode", selection: $importMode) {
@@ -1300,7 +1301,12 @@ struct ImportCenterView: View {
                 } label: {
                     Label("Add Receipts", systemImage: "doc.badge.gearshape")
                 }
-                Text("CSV and receipt files are parsed locally. Nothing is uploaded.")
+                Button {
+                    isShowingEmailImporter = true
+                } label: {
+                    Label("Import .eml", systemImage: "envelope.badge")
+                }
+                Text("CSV, receipt, and email files are parsed locally. Nothing is uploaded.")
                     .foregroundStyle(.secondary)
             }
 
@@ -1386,6 +1392,13 @@ struct ImportCenterView: View {
             allowsMultipleSelection: true
         ) { result in
             handleReceiptSelection(result)
+        }
+        .fileImporter(
+            isPresented: $isShowingEmailImporter,
+            allowedContentTypes: [emlContentType],
+            allowsMultipleSelection: true
+        ) { result in
+            handleEmailReceiptSelection(result)
         }
         .onChange(of: importMode) { _, _ in
             importSummary = nil
@@ -1501,6 +1514,10 @@ struct ImportCenterView: View {
             }
             .frame(minHeight: 150)
         }
+    }
+
+    private var emlContentType: UTType {
+        UTType(filenameExtension: "eml") ?? .data
     }
 
     private func handleImportSelection(_ result: Result<[URL], Error>) {
@@ -1620,6 +1637,40 @@ struct ImportCenterView: View {
         }
     }
 
+    private func handleEmailReceiptSelection(_ result: Result<[URL], Error>) {
+        importError = nil
+        importNotice = nil
+
+        do {
+            let urls = try result.get()
+            let summary = EmailReceiptImportService.importEMLFiles(at: urls, context: modelContext)
+            try modelContext.save()
+
+            var parts = ["Imported \(summary.importedCount) email receipts"]
+            if summary.duplicateCount > 0 {
+                parts.append("\(summary.duplicateCount) duplicates")
+            }
+            if summary.skippedAttachmentCount > 0 {
+                parts.append("\(summary.skippedAttachmentCount) skipped attachments")
+            }
+            if !summary.failedFilenames.isEmpty {
+                parts.append(failedEmailImportSummary(summary.failedFilenames))
+            }
+            importNotice = parts.joined(separator: ", ") + "."
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func failedEmailImportSummary(_ filenames: [String]) -> String {
+        let visibleFilenames = filenames.prefix(3).joined(separator: ", ")
+        let label = filenames.count == 1 ? "failed message" : "failed messages"
+        if filenames.count > 3 {
+            return "\(filenames.count) \(label): \(visibleFilenames), and \(filenames.count - 3) more"
+        }
+        return "\(filenames.count) \(label): \(visibleFilenames)"
+    }
+
     private func receiptMetadataSummary(for attachment: ReceiptAttachment) -> String? {
         var parts: [String] = []
         if let merchant = attachment.extractedMerchant {
@@ -1630,6 +1681,11 @@ struct ImportCenterView: View {
         }
         if let amount = attachment.extractedAmount {
             parts.append(amount.currencyFormatted)
+        }
+        if let subject = attachment.sourceMessageSubject {
+            parts.append("Email: \(subject)")
+        } else if let filename = attachment.sourceMessageFilename {
+            parts.append("Email: \(filename)")
         }
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
