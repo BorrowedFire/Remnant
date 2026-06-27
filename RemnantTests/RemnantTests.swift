@@ -243,7 +243,7 @@ struct ExpenseLedgerTests {
     func defaultCategorySeedingInsertsDefaultsOnce() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
-            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, ImportBatch.self, VendorRule.self,
+            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, CSVImportProfile.self, ImportBatch.self, VendorRule.self,
             configurations: config
         )
 
@@ -427,6 +427,47 @@ struct ExpenseLedgerTests {
         #expect(summary.accepted.first?.expense.note == "Developer Program")
     }
 
+    @Test("CSV import uses saved profile for custom headers")
+    func csvImportUsesSavedProfileForCustomHeaders() throws {
+        let csv = """
+        When,Counterparty,Cash Out,Curr,Acct,Memo
+        2026-06-01,OpenAI,20.00,USD,Amex,API usage
+        """
+        let url = try writeTemporaryCSV(csv)
+        let profile = CSVImportProfile(
+            name: "Custom Card",
+            importMode: .statementReview,
+            mapping: CSVColumnMapping(
+                dateHeader: "When",
+                merchantHeader: "Counterparty",
+                debitHeader: "Cash Out",
+                accountHeader: "Acct",
+                noteHeader: "Memo",
+                currencyHeader: "Curr"
+            )
+        )
+
+        let summary = try ExpenseImportService.previewCSV(
+            at: url,
+            existingExpenses: [],
+            source: profile.importMode.source,
+            defaultStatus: profile.importMode.defaultStatus,
+            profile: profile
+        )
+
+        let expense = try #require(summary.accepted.first?.expense)
+        #expect(summary.activeProfileName == "Custom Card")
+        #expect(summary.columnMapping.dateHeader == "When")
+        #expect(summary.columnMapping.merchantHeader == "Counterparty")
+        #expect(summary.columnMapping.debitHeader == "Cash Out")
+        #expect(expense.merchant == "OpenAI")
+        #expect(expense.amount == 20)
+        #expect(expense.paymentAccount == "Amex")
+        #expect(expense.note == "API usage")
+        #expect(expense.status == .draft)
+        #expect(expense.source == .csvImport)
+    }
+
     @Test("CSV import parses money-out columns and skips money-in credits")
     func csvImportParsesMoneyOutColumnsAndSkipsMoneyInCredits() throws {
         let csv = """
@@ -446,6 +487,32 @@ struct ExpenseLedgerTests {
         #expect(summary.ignoredRows == [3])
         #expect(summary.accepted.first?.expense.merchant == "OpenAI")
         #expect(summary.accepted.first?.expense.amount == 20)
+    }
+
+    @Test("CSV import profiles persist locally")
+    func csvImportProfilesPersistLocally() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let profile = CSVImportProfile(
+            name: "Amex Export",
+            importMode: .waveMigration,
+            mapping: CSVColumnMapping(
+                dateHeader: "Posted",
+                merchantHeader: "Description",
+                amountHeader: "Amount",
+                categoryHeader: "Category"
+            )
+        )
+        context.insert(profile)
+        try context.save()
+
+        let profiles = try context.fetch(FetchDescriptor<CSVImportProfile>())
+        let storedProfile = try #require(profiles.first)
+
+        #expect(storedProfile.name == "Amex Export")
+        #expect(storedProfile.importMode == .waveMigration)
+        #expect(storedProfile.mapping.dateHeader == "Posted")
+        #expect(storedProfile.mapping.mappedCount == 4)
     }
 
     @Test("CSV import keeps duplicate rows out of accepted results")
@@ -934,7 +1001,7 @@ struct ExpenseLedgerTests {
     private func makeExpenseContainer() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
-            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, ImportBatch.self, VendorRule.self,
+            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, CSVImportProfile.self, ImportBatch.self, VendorRule.self,
             configurations: config
         )
     }

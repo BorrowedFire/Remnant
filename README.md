@@ -11,7 +11,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Expense dashboard with month total, review queue, receipt inbox, category spend, and 12-month expense flow
 - Focused Review Inbox for imported drafts, missing receipts, duplicate candidates, uncategorized rows, and bulk cleanup
 - Manual expense entry with category, account, payment method, note, receipt attachment, and bulk review actions for imported expenses
-- Local CSV import for Wave or bank exports with preview, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
+- Local CSV import for Wave or bank exports with preview, saved source profiles, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
 - Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
 - Local text/PDF receipt metadata extraction for merchant, date, and amount
 - Receipt dedupe by content hash

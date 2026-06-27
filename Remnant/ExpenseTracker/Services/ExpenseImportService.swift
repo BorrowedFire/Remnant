@@ -10,6 +10,8 @@ struct ExpenseImportCandidate: Identifiable {
 
 struct ExpenseImportSummary {
     let sourceName: String
+    let activeProfileName: String?
+    let columnMapping: CSVColumnMapping
     let rowCount: Int
     let accepted: [ExpenseImportCandidate]
     let duplicates: [ExpenseImportCandidate]
@@ -38,6 +40,7 @@ enum ExpenseImportService {
         existingExpenses: [Expense],
         source: ExpenseSource,
         defaultStatus: ExpenseStatus = .draft,
+        profile: CSVImportProfile? = nil,
         vendorRules: [VendorRule] = []
     ) throws -> ExpenseImportSummary {
         let data = try Data(contentsOf: url)
@@ -49,7 +52,8 @@ enum ExpenseImportService {
             .filter { row in row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
         guard let header = rows.first else { throw ExpenseImportError.unreadableFile }
 
-        let columns = detectColumns(header)
+        let autoColumns = detectColumns(header)
+        let columns = columns(from: profile?.mapping, header: header, fallback: autoColumns)
         guard let dateColumn = columns.date,
               let merchantColumn = columns.merchant,
               columns.amount != nil || columns.debit != nil || columns.credit != nil else {
@@ -118,6 +122,8 @@ enum ExpenseImportService {
 
         return ExpenseImportSummary(
             sourceName: url.lastPathComponent,
+            activeProfileName: profile?.name,
+            columnMapping: mapping(from: columns, header: header),
             rowCount: max(rows.count - 1, 0),
             accepted: accepted,
             duplicates: duplicates,
@@ -178,6 +184,58 @@ enum ExpenseImportService {
             }
         }
         return columns
+    }
+
+    private static func columns(
+        from mapping: CSVColumnMapping?,
+        header: [String],
+        fallback: Columns
+    ) -> Columns {
+        guard let mapping else { return fallback }
+        var columns = fallback
+        apply(mapping.dateHeader, to: &columns.date, header: header)
+        apply(mapping.merchantHeader, to: &columns.merchant, header: header)
+        apply(mapping.amountHeader, to: &columns.amount, header: header)
+        apply(mapping.debitHeader, to: &columns.debit, header: header)
+        apply(mapping.creditHeader, to: &columns.credit, header: header)
+        apply(mapping.categoryHeader, to: &columns.category, header: header)
+        apply(mapping.accountHeader, to: &columns.account, header: header)
+        apply(mapping.paymentMethodHeader, to: &columns.paymentMethod, header: header)
+        apply(mapping.noteHeader, to: &columns.note, header: header)
+        apply(mapping.receiptHeader, to: &columns.receipt, header: header)
+        apply(mapping.transactionTypeHeader, to: &columns.transactionType, header: header)
+        apply(mapping.directionHeader, to: &columns.direction, header: header)
+        apply(mapping.currencyHeader, to: &columns.currency, header: header)
+        return columns
+    }
+
+    private static func apply(_ mappedHeader: String, to column: inout Int?, header: [String]) {
+        guard let index = index(of: mappedHeader, in: header) else { return }
+        column = index
+    }
+
+    private static func index(of mappedHeader: String, in header: [String]) -> Int? {
+        let normalizedMappedHeader = normalizeHeader(mappedHeader)
+        guard !normalizedMappedHeader.isEmpty else { return nil }
+        return header.firstIndex { normalizeHeader($0) == normalizedMappedHeader }
+    }
+
+    private static func mapping(from columns: Columns, header: [String]) -> CSVColumnMapping {
+        CSVColumnMapping(
+            dateHeader: value(header, at: columns.date) ?? "",
+            merchantHeader: value(header, at: columns.merchant) ?? "",
+            amountHeader: value(header, at: columns.amount) ?? "",
+            debitHeader: value(header, at: columns.debit) ?? "",
+            creditHeader: value(header, at: columns.credit) ?? "",
+            categoryHeader: value(header, at: columns.category) ?? "",
+            accountHeader: value(header, at: columns.account) ?? "",
+            paymentMethodHeader: value(header, at: columns.paymentMethod) ?? "",
+            noteHeader: value(header, at: columns.note) ?? "",
+            receiptHeader: value(header, at: columns.receipt) ?? "",
+            transactionTypeHeader: value(header, at: columns.transactionType) ?? "",
+            directionHeader: value(header, at: columns.direction) ?? "",
+            currencyHeader: value(header, at: columns.currency) ?? ""
+        )
     }
 
     private static func expenseAmount(row: [String], columns: Columns) -> Decimal? {

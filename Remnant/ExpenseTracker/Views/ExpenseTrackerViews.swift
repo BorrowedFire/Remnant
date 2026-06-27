@@ -1220,6 +1220,8 @@ struct ImportCenterView: View {
     private var expenses: [Expense]
     @Query(sort: [SortDescriptor(\ImportBatch.importedAt, order: .reverse)])
     private var importBatches: [ImportBatch]
+    @Query(sort: [SortDescriptor(\CSVImportProfile.name)])
+    private var importProfiles: [CSVImportProfile]
     @Query(sort: [SortDescriptor(\ReceiptAttachment.importedAt, order: .reverse)])
     private var receiptAttachments: [ReceiptAttachment]
     @Query(sort: [SortDescriptor(\VendorRule.merchantPattern)])
@@ -1231,6 +1233,14 @@ struct ImportCenterView: View {
     @State private var importSummary: ExpenseImportSummary?
     @State private var importError: String?
     @State private var importNotice: String?
+    @State private var selectedProfileID: UUID?
+    @State private var profileDraftName = ""
+    @State private var editingProfile: CSVImportProfile?
+
+    private var selectedProfile: CSVImportProfile? {
+        guard let selectedProfileID else { return nil }
+        return importProfiles.first { $0.id == selectedProfileID }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xl) {
@@ -1247,6 +1257,35 @@ struct ImportCenterView: View {
 
                 Text(importMode.detail)
                     .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: Spacing.md) {
+                Picker("CSV Profile", selection: $selectedProfileID) {
+                    Text("Auto Detect").tag(Optional<UUID>.none)
+                    ForEach(importProfiles) { profile in
+                        Text(profile.name).tag(Optional(profile.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 260)
+                .onChange(of: selectedProfileID) { _, _ in
+                    if let selectedProfile {
+                        importMode = selectedProfile.importMode
+                        profileDraftName = selectedProfile.name
+                    } else {
+                        profileDraftName = ""
+                    }
+                    importSummary = nil
+                    importNotice = nil
+                }
+
+                if let selectedProfile {
+                    Button {
+                        editingProfile = selectedProfile
+                    } label: {
+                        Label("Edit Profile", systemImage: "slider.horizontal.3")
+                    }
+                }
             }
 
             HStack(spacing: Spacing.md) {
@@ -1298,6 +1337,10 @@ struct ImportCenterView: View {
                 }
             }
 
+            if !importProfiles.isEmpty {
+                csvProfileList
+            }
+
             if !receiptAttachments.isEmpty {
                 Text("Receipt Vault")
                     .font(.headline)
@@ -1347,6 +1390,10 @@ struct ImportCenterView: View {
             importSummary = nil
             importNotice = nil
         }
+        .sheet(item: $editingProfile) { profile in
+            CSVImportProfileFormView(profile: profile)
+                .frame(width: 560)
+        }
     }
 
     private func importPreview(_ summary: ExpenseImportSummary) -> some View {
@@ -1358,6 +1405,25 @@ struct ImportCenterView: View {
                 metric("Ready", "\(summary.accepted.count)")
                 metric("Duplicates", "\(summary.duplicates.count)")
                 metric("Skipped", "\(summary.ignoredRows.count)")
+            }
+
+            HStack(spacing: Spacing.md) {
+                Label(summary.activeProfileName ?? "Auto Detect", systemImage: "slider.horizontal.3")
+                    .foregroundStyle(.secondary)
+                Text("\(summary.columnMapping.mappedCount) mapped columns")
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: Spacing.md) {
+                TextField("Profile Name", text: $profileDraftName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                Button {
+                    saveProfile(from: summary)
+                } label: {
+                    Label(selectedProfile == nil ? "Save Profile" : "Update Profile", systemImage: "square.and.arrow.down")
+                }
+                .disabled(normalizedProfileDraftName.isEmpty || summary.columnMapping.mappedCount == 0)
             }
 
             if !summary.notes.isEmpty {
@@ -1398,6 +1464,44 @@ struct ImportCenterView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
     }
 
+    private var csvProfileList: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text("CSV Profiles")
+                .font(.headline)
+            List(importProfiles) { profile in
+                HStack(spacing: Spacing.md) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.name)
+                            .font(.body.weight(.medium))
+                        Text("\(profile.importMode.label) · \(profile.mapping.mappedCount) mapped columns")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        selectedProfileID = profile.id
+                        importMode = profile.importMode
+                        profileDraftName = profile.name
+                        importSummary = nil
+                    } label: {
+                        Label("Use", systemImage: "checkmark.circle")
+                    }
+                    Button {
+                        editingProfile = profile
+                    } label: {
+                        Label("Edit", systemImage: "slider.horizontal.3")
+                    }
+                    Button(role: .destructive) {
+                        deleteProfile(profile)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+            .frame(minHeight: 150)
+        }
+    }
+
     private func handleImportSelection(_ result: Result<[URL], Error>) {
         importError = nil
         importNotice = nil
@@ -1410,13 +1514,18 @@ struct ImportCenterView: View {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
+            let profile = selectedProfile
             importSummary = try ExpenseImportService.previewCSV(
                 at: url,
                 existingExpenses: expenses,
                 source: importMode.source,
                 defaultStatus: importMode.defaultStatus,
+                profile: profile,
                 vendorRules: vendorRules
             )
+            if profileDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                profileDraftName = url.deletingPathExtension().lastPathComponent
+            }
         } catch {
             importSummary = nil
             importError = error.localizedDescription
@@ -1431,7 +1540,7 @@ struct ImportCenterView: View {
             acceptedCount: summary.accepted.count,
             duplicateCount: summary.duplicates.count,
             ignoredCount: summary.ignoredRows.count,
-            notes: ([importMode.detail] + summary.notes).joined(separator: " ")
+            notes: ([importMode.detail, profileNote(for: summary)] + summary.notes).joined(separator: " ")
         )
         modelContext.insert(batch)
 
@@ -1443,6 +1552,49 @@ struct ImportCenterView: View {
         try? modelContext.save()
         importSummary = nil
         importNotice = "Imported \(summary.accepted.count) expenses from \(summary.sourceName)."
+    }
+
+    private var normalizedProfileDraftName: String {
+        profileDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func saveProfile(from summary: ExpenseImportSummary) {
+        guard !normalizedProfileDraftName.isEmpty else { return }
+
+        if let selectedProfile {
+            selectedProfile.name = normalizedProfileDraftName
+            selectedProfile.importMode = importMode
+            selectedProfile.apply(mapping: summary.columnMapping)
+            selectedProfileID = selectedProfile.id
+        } else {
+            let profile = CSVImportProfile(
+                name: normalizedProfileDraftName,
+                importMode: importMode,
+                mapping: summary.columnMapping
+            )
+            modelContext.insert(profile)
+            selectedProfileID = profile.id
+        }
+
+        try? modelContext.save()
+        importNotice = "Saved CSV profile \(normalizedProfileDraftName)."
+    }
+
+    private func deleteProfile(_ profile: CSVImportProfile) {
+        if selectedProfileID == profile.id {
+            selectedProfileID = nil
+            profileDraftName = ""
+            importSummary = nil
+        }
+        modelContext.delete(profile)
+        try? modelContext.save()
+    }
+
+    private func profileNote(for summary: ExpenseImportSummary) -> String {
+        if let activeProfileName = summary.activeProfileName {
+            return "Profile: \(activeProfileName)."
+        }
+        return "Profile: Auto Detect."
     }
 
     private func handleReceiptSelection(_ result: Result<[URL], Error>) {
@@ -1480,6 +1632,117 @@ struct ImportCenterView: View {
         }
         guard !parts.isEmpty else { return nil }
         return parts.joined(separator: " · ")
+    }
+}
+
+private struct CSVImportProfileFormView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    let profile: CSVImportProfile
+
+    @State private var name: String
+    @State private var importMode: ExpenseImportMode
+    @State private var dateHeader: String
+    @State private var merchantHeader: String
+    @State private var amountHeader: String
+    @State private var debitHeader: String
+    @State private var creditHeader: String
+    @State private var categoryHeader: String
+    @State private var accountHeader: String
+    @State private var paymentMethodHeader: String
+    @State private var noteHeader: String
+    @State private var receiptHeader: String
+    @State private var transactionTypeHeader: String
+    @State private var directionHeader: String
+    @State private var currencyHeader: String
+
+    init(profile: CSVImportProfile) {
+        self.profile = profile
+        _name = State(initialValue: profile.name)
+        _importMode = State(initialValue: profile.importMode)
+        _dateHeader = State(initialValue: profile.dateHeader)
+        _merchantHeader = State(initialValue: profile.merchantHeader)
+        _amountHeader = State(initialValue: profile.amountHeader)
+        _debitHeader = State(initialValue: profile.debitHeader)
+        _creditHeader = State(initialValue: profile.creditHeader)
+        _categoryHeader = State(initialValue: profile.categoryHeader)
+        _accountHeader = State(initialValue: profile.accountHeader)
+        _paymentMethodHeader = State(initialValue: profile.paymentMethodHeader)
+        _noteHeader = State(initialValue: profile.noteHeader)
+        _receiptHeader = State(initialValue: profile.receiptHeader)
+        _transactionTypeHeader = State(initialValue: profile.transactionTypeHeader)
+        _directionHeader = State(initialValue: profile.directionHeader)
+        _currencyHeader = State(initialValue: profile.currencyHeader)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            header("CSV Profile", subtitle: "Saved locally for recurring imports.")
+
+            Form {
+                TextField("Name", text: $name)
+                Picker("Import Mode", selection: $importMode) {
+                    ForEach(ExpenseImportMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Date Header", text: $dateHeader)
+                TextField("Merchant Header", text: $merchantHeader)
+                TextField("Amount Header", text: $amountHeader)
+                TextField("Debit Header", text: $debitHeader)
+                TextField("Credit Header", text: $creditHeader)
+                TextField("Category Header", text: $categoryHeader)
+                TextField("Account Header", text: $accountHeader)
+                TextField("Payment Method Header", text: $paymentMethodHeader)
+                TextField("Note Header", text: $noteHeader)
+                TextField("Receipt Header", text: $receiptHeader)
+                TextField("Transaction Type Header", text: $transactionTypeHeader)
+                TextField("Direction Header", text: $directionHeader)
+                TextField("Currency Header", text: $currencyHeader)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                Button("Save") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(normalizedName.isEmpty)
+            }
+        }
+        .padding(24)
+    }
+
+    private var normalizedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func save() {
+        profile.name = normalizedName
+        profile.importMode = importMode
+        profile.apply(mapping: CSVColumnMapping(
+            dateHeader: dateHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            merchantHeader: merchantHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            amountHeader: amountHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            debitHeader: debitHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            creditHeader: creditHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            categoryHeader: categoryHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            accountHeader: accountHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            paymentMethodHeader: paymentMethodHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            noteHeader: noteHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            receiptHeader: receiptHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            transactionTypeHeader: transactionTypeHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            directionHeader: directionHeader.trimmingCharacters(in: .whitespacesAndNewlines),
+            currencyHeader: currencyHeader.trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
+        try? modelContext.save()
+        dismiss()
     }
 }
 
