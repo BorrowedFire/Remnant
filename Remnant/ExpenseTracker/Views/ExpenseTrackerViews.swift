@@ -16,8 +16,8 @@ struct ExpenseDashboardView: View {
         expenses.filter { $0.status != .ignored }
     }
 
-    private var draftExpenses: [Expense] {
-        activeExpenses.filter { $0.status == .draft }
+    private var reviewInboxExpenses: [Expense] {
+        ExpenseLedger.reviewInboxExpenses(in: activeExpenses)
     }
 
     private var unmatchedReceiptCount: Int {
@@ -39,8 +39,8 @@ struct ExpenseDashboardView: View {
                     )
                     DashboardMetric(
                         title: "Need Review",
-                        value: "\(draftExpenses.count)",
-                        subtitle: "Draft entries",
+                        value: "\(reviewInboxExpenses.count)",
+                        subtitle: "Cleanup issues",
                         systemImage: "checklist",
                         tint: .orange
                     )
@@ -64,19 +64,24 @@ struct ExpenseDashboardView: View {
                     VStack(alignment: .leading, spacing: Spacing.lg) {
                         DashboardPanel(title: "Review Queue") {
                             DashboardQueueRow(
-                                title: "Draft expenses",
-                                value: "\(draftExpenses.count)",
-                                systemImage: "pencil.and.list.clipboard"
+                                title: "Imported drafts",
+                                value: "\(reviewIssueCount(.importedDraft))",
+                                systemImage: "tray.and.arrow.down"
                             )
                             DashboardQueueRow(
                                 title: "Missing receipts",
-                                value: "\(ExpenseLedger.expensesMissingReceipts(in: activeExpenses).count)",
+                                value: "\(reviewIssueCount(.missingReceipt))",
                                 systemImage: "doc.badge.clock"
                             )
                             DashboardQueueRow(
                                 title: "Uncategorized",
-                                value: "\(ExpenseLedger.uncategorizedExpenses(in: activeExpenses).count)",
+                                value: "\(reviewIssueCount(.uncategorized))",
                                 systemImage: "questionmark.folder"
+                            )
+                            DashboardQueueRow(
+                                title: "Duplicate candidates",
+                                value: "\(reviewIssueCount(.duplicateCandidate))",
+                                systemImage: "doc.on.doc"
                             )
                         }
 
@@ -158,6 +163,10 @@ struct ExpenseDashboardView: View {
                 amount: total
             )
         }
+    }
+
+    private func reviewIssueCount(_ issue: ExpenseReviewIssue) -> Int {
+        ExpenseLedger.expenses(reviewInboxExpenses, matchingReviewIssue: issue, allExpenses: activeExpenses).count
     }
 
     private var categorySpend: [CategorySpendItem] {
@@ -406,6 +415,241 @@ private struct ExpenseSummaryRow: View {
             Text(expense.amount.currencyFormatted)
                 .monospacedDigit()
         }
+    }
+}
+
+struct ExpenseReviewInboxView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
+    private var expenses: [Expense]
+    @Query(sort: [SortDescriptor(\ExpenseCategory.sortOrder)])
+    private var categories: [ExpenseCategory]
+
+    @State private var issueFilter = ExpenseReviewInboxFilter.all
+    @State private var selectedCategory = "Uncategorized"
+    @State private var selectedExpenseIDs = Set<UUID>()
+    @State private var editingExpense: Expense?
+
+    private var inboxExpenses: [Expense] {
+        ExpenseLedger.reviewInboxExpenses(in: expenses)
+    }
+
+    private var filteredExpenses: [Expense] {
+        issueFilter.expenses(in: inboxExpenses, allExpenses: expenses)
+    }
+
+    private var selectedExpenses: [Expense] {
+        expenses.filter { selectedExpenseIDs.contains($0.id) }
+    }
+
+    private var categoryNames: [String] {
+        let names = categories.map(\.name)
+        return names.isEmpty ? ["Uncategorized"] : names
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            header("Review Inbox", subtitle: "Imported cleanup and ledger exceptions.")
+
+            HStack(spacing: Spacing.lg) {
+                metric("Inbox", "\(inboxExpenses.count)")
+                metric("Imported Drafts", "\(count(.importedDraft))")
+                metric("Missing Receipts", "\(count(.missingReceipt))")
+                metric("Duplicates", "\(count(.duplicateCandidate))")
+                metric("Uncategorized", "\(count(.uncategorized))")
+            }
+
+            HStack(spacing: Spacing.md) {
+                Picker("Issue", selection: $issueFilter) {
+                    ForEach(ExpenseReviewInboxFilter.allCases) { filter in
+                        Text(filter.label).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 210)
+                .onChange(of: issueFilter) { _, _ in
+                    selectedExpenseIDs.removeAll()
+                }
+
+                Picker("Category", selection: $selectedCategory) {
+                    ForEach(categoryNames, id: \.self) { category in
+                        Text(category).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 210)
+
+                Button {
+                    updateCategory(selectedCategory, for: selectedExpenses)
+                    selectedExpenseIDs.removeAll()
+                } label: {
+                    Label("Apply Category", systemImage: "tag")
+                }
+                .disabled(selectedExpenseIDs.isEmpty)
+
+                Button {
+                    updateSelectedStatus(.reviewed)
+                } label: {
+                    Label("Mark Reviewed", systemImage: "checkmark.circle")
+                }
+                .disabled(selectedExpenseIDs.isEmpty)
+
+                Button(role: .destructive) {
+                    updateSelectedStatus(.ignored)
+                } label: {
+                    Label("Ignore", systemImage: "eye.slash")
+                }
+                .disabled(selectedExpenseIDs.isEmpty)
+            }
+
+            if filteredExpenses.isEmpty {
+                emptyState("Review inbox is clear", "Imported drafts and cleanup issues will appear here.")
+            } else {
+                List(selection: $selectedExpenseIDs) {
+                    ForEach(filteredExpenses) { expense in
+                        ExpenseReviewInboxRow(
+                            expense: expense,
+                            issues: ExpenseLedger.reviewIssues(for: expense, allExpenses: expenses)
+                        )
+                        .tag(expense.id)
+                        .onTapGesture(count: 2) {
+                            editingExpense = expense
+                        }
+                        .contextMenu {
+                            Button("Edit", systemImage: "pencil") {
+                                editingExpense = expense
+                            }
+                            Button("Attach Receipt", systemImage: "doc.badge.plus") {
+                                editingExpense = expense
+                            }
+                            Divider()
+                            Menu("Set Category") {
+                                ForEach(categoryNames, id: \.self) { category in
+                                    Button(category) {
+                                        updateCategory(category, for: [expense])
+                                    }
+                                }
+                            }
+                            Divider()
+                            Button("Mark Reviewed", systemImage: "checkmark.circle") {
+                                updateStatus(.reviewed, for: [expense])
+                            }
+                            Button("Ignore", systemImage: "eye.slash", role: .destructive) {
+                                updateStatus(.ignored, for: [expense])
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(24)
+        .sheet(item: $editingExpense) { expense in
+            ExpenseFormView(expense: expense)
+                .frame(width: 560)
+        }
+    }
+
+    private func count(_ issue: ExpenseReviewIssue) -> Int {
+        ExpenseLedger.expenses(inboxExpenses, matchingReviewIssue: issue, allExpenses: expenses).count
+    }
+
+    private func updateSelectedStatus(_ status: ExpenseStatus) {
+        updateStatus(status, for: selectedExpenses)
+        selectedExpenseIDs.removeAll()
+    }
+
+    private func updateStatus(_ status: ExpenseStatus, for expenses: [Expense]) {
+        guard !expenses.isEmpty else { return }
+        _ = ExpenseLedger.updateStatus(of: expenses, to: status)
+        try? modelContext.save()
+    }
+
+    private func updateCategory(_ category: String, for expenses: [Expense]) {
+        guard !expenses.isEmpty else { return }
+        let now = Date()
+        for expense in expenses {
+            expense.categoryName = category
+            expense.updatedAt = now
+        }
+        try? modelContext.save()
+    }
+}
+
+private enum ExpenseReviewInboxFilter: String, CaseIterable, Identifiable {
+    case all
+    case importedDraft
+    case missingReceipt
+    case uncategorized
+    case duplicateCandidate
+    case manualReview
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: "All Issues"
+        case .importedDraft: "Imported Drafts"
+        case .missingReceipt: "Missing Receipts"
+        case .uncategorized: "Uncategorized"
+        case .duplicateCandidate: "Duplicates"
+        case .manualReview: "Draft Review"
+        }
+    }
+
+    private var issue: ExpenseReviewIssue? {
+        switch self {
+        case .all: nil
+        case .importedDraft: .importedDraft
+        case .missingReceipt: .missingReceipt
+        case .uncategorized: .uncategorized
+        case .duplicateCandidate: .duplicateCandidate
+        case .manualReview: .manualReview
+        }
+    }
+
+    @MainActor
+    func expenses(in expenses: [Expense], allExpenses: [Expense]) -> [Expense] {
+        guard let issue else { return expenses }
+        return ExpenseLedger.expenses(expenses, matchingReviewIssue: issue, allExpenses: allExpenses)
+    }
+}
+
+private struct ExpenseReviewInboxRow: View {
+    let expense: Expense
+    let issues: Set<ExpenseReviewIssue>
+
+    var body: some View {
+        HStack(spacing: Spacing.lg) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(expense.merchant)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                Text("\(expense.date.mediumFormatted) · \(expense.categoryName ?? "Uncategorized") · \(expense.source.label)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                HStack(spacing: Spacing.xs) {
+                    ForEach(issueList) { issue in
+                        Label(issue.label, systemImage: issue.systemImage)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            Text(expense.status.label)
+                .font(.caption)
+                .foregroundStyle(expense.status == .reviewed ? .green : .secondary)
+            Text(expense.amount.currencyFormatted)
+                .monospacedDigit()
+                .frame(minWidth: 96, alignment: .trailing)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var issueList: [ExpenseReviewIssue] {
+        ExpenseReviewIssue.allCases
+            .filter { issues.contains($0) }
     }
 }
 
@@ -1905,6 +2149,39 @@ private extension ExpenseStatus {
         case .reviewed: "Reviewed"
         case .reimbursable: "Reimbursable"
         case .ignored: "Ignored"
+        }
+    }
+}
+
+private extension ExpenseSource {
+    var label: String {
+        switch self {
+        case .manual: "Manual"
+        case .csvImport: "CSV Import"
+        case .waveImport: "Wave Import"
+        case .receiptDraft: "Receipt Draft"
+        }
+    }
+}
+
+private extension ExpenseReviewIssue {
+    var label: String {
+        switch self {
+        case .importedDraft: "Imported Draft"
+        case .missingReceipt: "Missing Receipt"
+        case .uncategorized: "Uncategorized"
+        case .duplicateCandidate: "Duplicate"
+        case .manualReview: "Draft Review"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .importedDraft: "tray.and.arrow.down"
+        case .missingReceipt: "doc.badge.clock"
+        case .uncategorized: "questionmark.folder"
+        case .duplicateCandidate: "doc.on.doc"
+        case .manualReview: "checklist"
         }
     }
 }
