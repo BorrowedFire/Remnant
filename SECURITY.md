@@ -10,6 +10,6 @@ Report privately when a problem involves:
 - Backup/restore integrity failures
 - A vulnerability that should not be publicly disclosed before a fix exists
 
-Email: admin@borrowedfire.com
+Use GitHub private vulnerability reporting when it is available for this repository. If private vulnerability reporting is unavailable, open a minimal public issue that asks for a secure maintainer contact path and do not include sensitive details.
 
 For normal bugs, open a public issue with synthetic reproduction data.

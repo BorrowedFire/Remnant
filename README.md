@@ -14,6 +14,8 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Local CSV import for Wave or bank exports with preview, saved source profiles, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
 - Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
 - Local text/PDF receipt metadata extraction for merchant, date, and amount
+- Local Apple Vision OCR for scanned image receipts and scanned PDF pages
+- Local `.eml` import for receipt attachments without Gmail, IMAP, OAuth, or hosted email connectors
 - Receipt dedupe by content hash
 - Receipt matching panel with local suggestions for attaching inbox receipts to expenses that are missing receipts
 - Single and batch draft-expense creation from downloaded inbox receipts that are not already in the ledger
@@ -82,9 +84,7 @@ xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -dest
 
 ## Replacement Scope
 
-Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports, and create local backups with receipt integrity checks.
-
-Still planned: image OCR for scanned receipt files.
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, extract receipt metadata with local text/PDF parsing and Apple Vision OCR, import receipt attachments from local `.eml` files, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports, and create local backups with receipt integrity checks.
 
 ## Contributing
 
