@@ -52,6 +52,47 @@ enum ExpenseLedger {
         }
     }
 
+    static func reviewIssues(for expense: Expense, allExpenses: [Expense]) -> Set<ExpenseReviewIssue> {
+        guard expense.status != .ignored else { return [] }
+
+        let activeExpenses = allExpenses.filter { $0.status != .ignored }
+        var issues = Set<ExpenseReviewIssue>()
+
+        if expense.status == .draft {
+            issues.insert(.manualReview)
+
+            if expense.source != .manual {
+                issues.insert(.importedDraft)
+            }
+        }
+
+        if expensesMissingReceipts(in: activeExpenses).contains(where: { $0.id == expense.id }) {
+            issues.insert(.missingReceipt)
+        }
+
+        if uncategorizedExpenses(in: activeExpenses).contains(where: { $0.id == expense.id }) {
+            issues.insert(.uncategorized)
+        }
+
+        if possibleDuplicate(of: expense, in: activeExpenses) != nil {
+            issues.insert(.duplicateCandidate)
+        }
+
+        return issues
+    }
+
+    static func reviewInboxExpenses(in expenses: [Expense]) -> [Expense] {
+        expenses.filter { !reviewIssues(for: $0, allExpenses: expenses).isEmpty }
+    }
+
+    static func expenses(
+        _ expenses: [Expense],
+        matchingReviewIssue issue: ExpenseReviewIssue,
+        allExpenses: [Expense]
+    ) -> [Expense] {
+        expenses.filter { reviewIssues(for: $0, allExpenses: allExpenses).contains(issue) }
+    }
+
     @discardableResult
     static func updateStatus(
         of expenses: [Expense],

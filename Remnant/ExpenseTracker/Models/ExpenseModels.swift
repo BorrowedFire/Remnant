@@ -109,6 +109,16 @@ enum BusinessDimensionKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ExpenseReviewIssue: String, Codable, CaseIterable, Identifiable {
+    case importedDraft
+    case missingReceipt
+    case uncategorized
+    case duplicateCandidate
+    case manualReview
+
+    var id: String { rawValue }
+}
+
 @Model
 final class Expense {
     var id: UUID = UUID()

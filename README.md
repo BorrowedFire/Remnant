@@ -9,6 +9,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 ## Current Features
 
 - Expense dashboard with month total, review queue, receipt inbox, category spend, and 12-month expense flow
+- Focused Review Inbox for imported drafts, missing receipts, duplicate candidates, uncategorized rows, and bulk cleanup
 - Manual expense entry with category, account, payment method, note, receipt attachment, and bulk review actions for imported expenses
 - Local CSV import for Wave or bank exports with preview, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
 - Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
@@ -80,7 +81,7 @@ xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -dest
 
 ## Replacement Scope
 
-Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, bulk-review imported expenses, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, and export tax-year CSV reports.
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, and export tax-year CSV reports.
 
 Still planned: image OCR for scanned receipt files.
 

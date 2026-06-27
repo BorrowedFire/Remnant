@@ -135,6 +135,80 @@ struct ExpenseLedgerTests {
         #expect(ExpenseLedger.outstandingFollowUpExpenses(in: expenses).map(\.id) == [billable.id, reimbursable.id, legacyReimbursable.id])
     }
 
+    @Test("Review issues classify imported cleanup rows")
+    func reviewIssuesClassifyImportedCleanupRows() {
+        let imported = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "Uncategorized",
+            status: .draft,
+            source: .csvImport
+        )
+
+        let issues = ExpenseLedger.reviewIssues(for: imported, allExpenses: [imported])
+
+        #expect(issues == Set([
+            .importedDraft,
+            .manualReview,
+            .missingReceipt,
+            .uncategorized
+        ]))
+    }
+
+    @Test("Review issues classify duplicate candidates")
+    func reviewIssuesClassifyDuplicateCandidates() throws {
+        let date = try makeUTCDate(year: 2026, month: 6, day: 1)
+        let first = Expense(
+            date: date,
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "Software",
+            status: .reviewed,
+            receiptFilename: "openai-a.pdf"
+        )
+        let second = Expense(
+            date: date,
+            merchant: " openai ",
+            amount: 20,
+            categoryName: "Software",
+            status: .reviewed,
+            receiptFilename: "openai-b.pdf"
+        )
+
+        let issues = ExpenseLedger.reviewIssues(for: first, allExpenses: [first, second])
+
+        #expect(issues == Set([.duplicateCandidate]))
+    }
+
+    @Test("Review inbox excludes ignored and clean reviewed expenses")
+    func reviewInboxExcludesIgnoredAndCleanReviewedExpenses() {
+        let clean = Expense(
+            merchant: "Apple",
+            amount: 99,
+            categoryName: "Software",
+            status: .reviewed,
+            receiptFilename: "apple.pdf"
+        )
+        let ignored = Expense(
+            merchant: "Ignored",
+            amount: 10,
+            categoryName: "Uncategorized",
+            status: .ignored
+        )
+        let importedDraft = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "Software",
+            status: .draft,
+            source: .csvImport,
+            receiptFilename: "openai.pdf"
+        )
+
+        let inbox = ExpenseLedger.reviewInboxExpenses(in: [clean, ignored, importedDraft])
+
+        #expect(inbox.map(\.id) == [importedDraft.id])
+    }
+
     @Test("Missing receipt filtering excludes ignored expenses")
     func missingReceiptFilteringExcludesIgnoredExpenses() {
         let missing = Expense(merchant: "No Receipt", amount: 10)
