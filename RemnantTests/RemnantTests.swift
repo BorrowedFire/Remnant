@@ -1003,6 +1003,151 @@ struct ExpenseLedgerTests {
         #expect(suggestion?.expense.id == sameDay.id)
     }
 
+    @Test("Backup integrity reports corrupt and missing receipts")
+    func backupIntegrityReportsCorruptAndMissingReceipts() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let receiptURL = vaultURL.appendingPathComponent("openai.pdf")
+        let receiptData = try #require("receipt-data".data(using: .utf8))
+        try receiptData.write(to: receiptURL)
+        let receiptHash = ReceiptVault.contentHash(for: receiptData)
+        let expense = Expense(merchant: "OpenAI", amount: 20, receiptContentHash: receiptHash)
+        let attachment = ReceiptAttachment(
+            expenseID: expense.id,
+            originalFilename: "openai.pdf",
+            localPath: receiptURL.path,
+            contentHash: receiptHash
+        )
+        expense.receiptAttachmentID = attachment.id
+        context.insert(expense)
+        context.insert(attachment)
+        try context.save()
+
+        let cleanReport = try RemnantBackupService.integrityReport(context: context, vaultDirectory: vaultURL)
+        #expect(cleanReport.issues.isEmpty)
+
+        try "changed".write(to: receiptURL, atomically: true, encoding: .utf8)
+        let corruptReport = try RemnantBackupService.integrityReport(context: context, vaultDirectory: vaultURL)
+        #expect(corruptReport.issues.contains { $0.kind == .corruptReceiptFile })
+
+        try FileManager.default.removeItem(at: receiptURL)
+        let missingReport = try RemnantBackupService.integrityReport(context: context, vaultDirectory: vaultURL)
+        #expect(missingReport.issues.contains { $0.kind == .missingReceiptFile })
+    }
+
+    @Test("Backup integrity reports broken links")
+    func backupIntegrityReportsBrokenLinks() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let receiptURL = vaultURL.appendingPathComponent("receipt.pdf")
+        let receiptData = try #require("receipt".data(using: .utf8))
+        try receiptData.write(to: receiptURL)
+        let receiptHash = ReceiptVault.contentHash(for: receiptData)
+        let expense = Expense(merchant: "Missing Attachment", amount: 20, receiptAttachmentID: UUID())
+        let attachment = ReceiptAttachment(
+            expenseID: UUID(),
+            originalFilename: "receipt.pdf",
+            localPath: receiptURL.path,
+            contentHash: receiptHash
+        )
+        context.insert(expense)
+        context.insert(attachment)
+        try context.save()
+
+        let report = try RemnantBackupService.integrityReport(context: context, vaultDirectory: vaultURL)
+
+        #expect(report.issues.contains { $0.kind == .brokenExpenseAttachmentLink })
+        #expect(report.issues.contains { $0.kind == .brokenAttachmentExpenseLink })
+    }
+
+    @Test("Backup repair updates restored receipt paths")
+    func backupRepairUpdatesRestoredReceiptPaths() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let receiptData = try #require("receipt".data(using: .utf8))
+        let receiptHash = ReceiptVault.contentHash(for: receiptData)
+        let receiptURL = vaultURL.appendingPathComponent("\(receiptHash).pdf")
+        try receiptData.write(to: receiptURL)
+        let attachment = ReceiptAttachment(
+            originalFilename: "receipt.pdf",
+            localPath: "/old/remnant/\(receiptHash).pdf",
+            contentHash: receiptHash
+        )
+        context.insert(attachment)
+        try context.save()
+
+        let staleReport = try RemnantBackupService.integrityReport(context: context, vaultDirectory: vaultURL)
+        let repairedCount = try RemnantBackupService.repairReceiptPaths(context: context, vaultDirectory: vaultURL)
+
+        #expect(staleReport.issues.contains { $0.kind == .staleReceiptPath })
+        #expect(repairedCount == 1)
+        #expect(attachment.localPath == receiptURL.path)
+    }
+
+    @Test("Backup package validation detects copied receipt corruption")
+    func backupPackageValidationDetectsCopiedReceiptCorruption() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("RemnantExpenseTrackerV1.store")
+        let vaultURL = directory.appendingPathComponent("Receipts", isDirectory: true)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        let receiptURL = vaultURL.appendingPathComponent("receipt.pdf")
+        let receiptData = try #require("receipt".data(using: .utf8))
+        try receiptData.write(to: receiptURL)
+        let receiptHash = ReceiptVault.contentHash(for: receiptData)
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        let expense = Expense(merchant: "OpenAI", amount: 20, receiptContentHash: receiptHash)
+        let attachment = ReceiptAttachment(
+            expenseID: expense.id,
+            originalFilename: "receipt.pdf",
+            localPath: receiptURL.path,
+            contentHash: receiptHash
+        )
+        expense.receiptAttachmentID = attachment.id
+        context.insert(expense)
+        context.insert(attachment)
+        try context.save()
+
+        let backupURL = directory.appendingPathComponent("backup.remnantbackup", isDirectory: true)
+        _ = try RemnantBackupService.createBackup(
+            at: backupURL,
+            context: context,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL,
+            allowOverwrite: true
+        )
+
+        let cleanReport = try RemnantBackupService.validateBackup(at: backupURL)
+        try "tampered".write(
+            to: backupURL
+                .appendingPathComponent("Receipts", isDirectory: true)
+                .appendingPathComponent("receipt.pdf"),
+            atomically: true,
+            encoding: .utf8
+        )
+        let corruptReport = try RemnantBackupService.validateBackup(at: backupURL)
+
+        #expect(cleanReport.issues.isEmpty)
+        #expect(corruptReport.issues.contains { $0.kind == .corruptBackupFile })
+    }
+
+    @Test("Restore staging requires explicit confirmation")
+    func restoreStagingRequiresExplicitConfirmation() throws {
+        let backupURL = try makeTemporaryDirectory()
+
+        do {
+            _ = try RemnantBackupService.stageRestore(from: backupURL, allowOverwrite: false)
+            Issue.record("Restore should require confirmation.")
+        } catch RemnantBackupError.restoreRequiresConfirmation {
+            #expect(true)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     private func writeTemporaryCSV(_ csv: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("remnant-\(UUID().uuidString)")

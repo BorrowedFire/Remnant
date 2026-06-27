@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E64FC1918D7F610DE36FF8C /* RemnantBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */; };
 		193FB67F9F5F79ADBF095194 /* Date+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2735E981CE5C1235F0FFF5C /* Date+Helpers.swift */; };
 		29EF38EED64E0D05AB3EDEFB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0AA1A112C1F73561E11962E2 /* PrivacyInfo.xcprivacy */; };
 		5F68DD644501542946A701C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 796BF34DA056B7065C30890D /* Assets.xcassets */; };
@@ -50,6 +51,7 @@
 		453AAD41309290B4C84C08DB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		46451DD188164F8912A6E777 /* ExpenseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseModels.swift; sourceTree = "<group>"; };
 		4B489005A7FC3BBBFFE5DE1B /* Decimal+Currency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Decimal+Currency.swift"; sourceTree = "<group>"; };
+		6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantBackupService.swift; sourceTree = "<group>"; };
 		6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptMatcher.swift; sourceTree = "<group>"; };
 		796BF34DA056B7065C30890D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9822193F398585E988A7474B /* RemnantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RemnantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -123,6 +125,7 @@
 				6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */,
 				170474F5123A7B5B7D8828D0 /* ReceiptMetadataExtractor.swift */,
 				0B324A5203874B79BF09613C /* ReceiptVault.swift */,
+				6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */,
 				16CC925514BB5EBBD1C8DA17 /* VendorRuleMatcher.swift */,
 			);
 			path = Services;
@@ -268,6 +271,7 @@
 				EABF89BD0F504A6C4AAB26FD /* ReceiptMetadataExtractor.swift in Sources */,
 				EBD1D6E9B6B55ADC8CEC8D0D /* ReceiptVault.swift in Sources */,
 				7F5787401C6FE69396E7E0E3 /* RemnantApp.swift in Sources */,
+				0E64FC1918D7F610DE36FF8C /* RemnantBackupService.swift in Sources */,
 				8EFDFE0C392B8F4308251B62 /* VendorRuleMatcher.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
