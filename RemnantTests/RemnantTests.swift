@@ -108,6 +108,43 @@ struct ExpenseLedgerTests {
         #expect(FileManager.default.fileExists(atPath: storeURL.path))
     }
 
+    @Test("Expense store migrates readable legacy default store")
+    func expenseStoreMigratesReadableLegacyDefaultStore() throws {
+        let directory = try makeTemporaryDirectory()
+        let legacyStoreURL = directory.appendingPathComponent(RemnantStore.legacyDefaultStoreFilename)
+        let targetStoreURL = directory.appendingPathComponent(RemnantStore.storeFilename)
+        let legacyExpenseID: UUID
+
+        do {
+            let legacyContainer = try RemnantStore.makeContainer(storeURL: legacyStoreURL)
+            let expense = Expense(merchant: "Legacy OpenAI", amount: 20)
+            legacyExpenseID = expense.id
+            legacyContainer.mainContext.insert(expense)
+            try legacyContainer.mainContext.save()
+        }
+
+        let didMigrate = try RemnantStore.migrateLegacyStoreIfNeeded(
+            from: legacyStoreURL,
+            to: targetStoreURL
+        )
+        let migratedContainer = try RemnantStore.makeContainer(storeURL: targetStoreURL)
+        let migratedExpenses = try migratedContainer.mainContext.fetch(FetchDescriptor<Expense>())
+
+        #expect(didMigrate)
+        #expect(migratedExpenses.map(\.id).contains(legacyExpenseID))
+    }
+
+    @Test("Expense source decodes legacy Gmail review value")
+    func expenseSourceDecodesLegacyGmailReviewValue() throws {
+        let legacyData = try #require("\"gmailReview\"".data(using: .utf8))
+        let source = try JSONDecoder().decode(ExpenseSource.self, from: legacyData)
+        let encodedData = try JSONEncoder().encode(ExpenseSource.receiptDraft)
+        let encodedValue = String(data: encodedData, encoding: .utf8)
+
+        #expect(source == .receiptDraft)
+        #expect(encodedValue == "\"receiptDraft\"")
+    }
+
     @Test("CSV import parses accepted expenses and skips credit rows")
     func csvImportParsesAcceptedExpensesAndSkipsCreditRows() throws {
         let csv = """
@@ -489,6 +526,33 @@ struct ExpenseLedgerTests {
         #expect(expense.receiptFilename == nil)
         #expect(expense.receiptContentHash == nil)
         #expect(!ExpenseLedger.expensesMissingReceipts(in: [expense]).isEmpty)
+    }
+
+    @Test("Receipt vault does not unlink attachment owned by another expense")
+    func receiptVaultDoesNotUnlinkAttachmentOwnedByAnotherExpense() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let owner = Expense(merchant: "Owner", amount: 15)
+        let deletingExpense = Expense(
+            merchant: "Deleting",
+            amount: 15,
+            receiptContentHash: "abc123"
+        )
+        let attachment = ReceiptAttachment(
+            expenseID: owner.id,
+            originalFilename: "apple.pdf",
+            localPath: "/tmp/apple.pdf",
+            contentHash: "abc123"
+        )
+        context.insert(owner)
+        context.insert(deletingExpense)
+        context.insert(attachment)
+
+        let changedCount = try ReceiptVault.unlinkAttachments(from: deletingExpense, context: context)
+
+        #expect(changedCount == 0)
+        #expect(attachment.expenseID == owner.id)
+        #expect(deletingExpense.receiptContentHash == nil)
     }
 
     @Test("Receipt vault creates draft expenses from usable receipt metadata")

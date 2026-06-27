@@ -149,8 +149,10 @@ enum ReceiptVault {
         var changedCount = 0
 
         for attachment in attachments where isLinked(attachment, to: expense) {
-            attachment.expenseID = nil
-            changedCount += 1
+            if attachment.expenseID != nil {
+                attachment.expenseID = nil
+                changedCount += 1
+            }
         }
 
         if expense.receiptAttachmentID != nil
@@ -252,9 +254,10 @@ enum ReceiptVault {
     }
 
     private static func isLinked(_ attachment: ReceiptAttachment, to expense: Expense) -> Bool {
-        if attachment.expenseID == expense.id {
-            return true
+        if let linkedExpenseID = attachment.expenseID {
+            return linkedExpenseID == expense.id
         }
+
         if let receiptAttachmentID = expense.receiptAttachmentID,
            attachment.id == receiptAttachmentID {
             return true

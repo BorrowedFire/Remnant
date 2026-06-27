@@ -96,6 +96,7 @@ final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
 enum RemnantStore {
     static let configurationName = "RemnantExpenseTrackerV1"
     static let storeFilename = "RemnantExpenseTrackerV1.store"
+    static let legacyDefaultStoreFilename = "default.store"
 
     static var schema: Schema {
         Schema([
@@ -109,12 +110,61 @@ enum RemnantStore {
 
     static func makeContainer(storeURL: URL? = nil) throws -> ModelContainer {
         let schema = schema
-        let url = try storeURL ?? defaultStoreURL()
+        let url = try storeURL ?? resolvedStoreURL()
         let configuration = ModelConfiguration(configurationName, schema: schema, url: url)
         return try ModelContainer(for: schema, configurations: [configuration])
     }
 
+    @discardableResult
+    static func migrateLegacyStoreIfNeeded(from legacyStoreURL: URL, to targetStoreURL: URL) throws -> Bool {
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: targetStoreURL.path),
+              fileManager.fileExists(atPath: legacyStoreURL.path) else {
+            return false
+        }
+
+        try fileManager.createDirectory(
+            at: targetStoreURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try copyStoreFiles(from: legacyStoreURL, to: targetStoreURL)
+
+        do {
+            _ = try makeContainer(storeURL: targetStoreURL)
+            return true
+        } catch {
+            removeStoreFiles(at: targetStoreURL)
+            return false
+        }
+    }
+
     static func defaultStoreURL() throws -> URL {
+        let directory = try remnantApplicationSupportDirectory()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent(storeFilename)
+    }
+
+    static func legacyDefaultStoreURL() throws -> URL {
+        try applicationSupportDirectory().appendingPathComponent(legacyDefaultStoreFilename)
+    }
+
+    private static func resolvedStoreURL() throws -> URL {
+        let storeURL = try defaultStoreURL()
+        if FileManager.default.fileExists(atPath: storeURL.path) {
+            return storeURL
+        }
+
+        let legacyStoreURL = try legacyDefaultStoreURL()
+        _ = try migrateLegacyStoreIfNeeded(from: legacyStoreURL, to: storeURL)
+        return storeURL
+    }
+
+    private static func remnantApplicationSupportDirectory() throws -> URL {
+        try applicationSupportDirectory()
+            .appendingPathComponent("com.borrowedfire.remnant", isDirectory: true)
+    }
+
+    private static func applicationSupportDirectory() throws -> URL {
         guard let applicationSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -122,8 +172,34 @@ enum RemnantStore {
             throw CocoaError(.fileNoSuchFile)
         }
 
-        let directory = applicationSupport.appendingPathComponent("com.borrowedfire.remnant", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent(storeFilename)
+        return applicationSupport
+    }
+
+    private static func copyStoreFiles(from sourceURL: URL, to destinationURL: URL) throws {
+        for (source, destination) in storeFilePairs(from: sourceURL, to: destinationURL) {
+            if FileManager.default.fileExists(atPath: source.path) {
+                try FileManager.default.copyItem(at: source, to: destination)
+            }
+        }
+    }
+
+    private static func removeStoreFiles(at storeURL: URL) {
+        for url in storeFileURLs(for: storeURL) where FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    private static func storeFilePairs(from sourceURL: URL, to destinationURL: URL) -> [(URL, URL)] {
+        zip(storeFileURLs(for: sourceURL), storeFileURLs(for: destinationURL)).map { pair in
+            (pair.0, pair.1)
+        }
+    }
+
+    private static func storeFileURLs(for storeURL: URL) -> [URL] {
+        [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-wal"),
+            URL(fileURLWithPath: storeURL.path + "-shm")
+        ]
     }
 }
