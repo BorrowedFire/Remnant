@@ -1,104 +1,83 @@
 # Remnant
 
-**Know what remains.**
+Remnant is a local-first macOS expense tracker for Borrowed Fire LLC. It is being rebuilt to replace Wave for expense review, receipt collection, and accountant-ready CSV export.
 
-Remnant is a privacy-first personal finance tracker for iOS. It digitizes the manual bill-paying workflow — enter income, pay bills, track what's left — without connecting to banks or sharing data with third parties.
+The app does not connect to banks, Wave, Gmail, CloudKit, StoreKit, analytics, or a backend service. Imports and receipt handling happen on this Mac.
 
-Built with SwiftUI for iOS 26+ with a dark-first design.
+## Current Features
 
-## Features
+- Expense dashboard with month total, review queue, receipt inbox, category spend, and 12-month expense flow
+- Manual expense entry with category, account, payment method, note, receipt attachment, and bulk review actions for imported expenses
+- Local CSV import for Wave or bank exports with preview, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
+- Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
+- Local text/PDF receipt metadata extraction for merchant, date, and amount
+- Receipt dedupe by content hash
+- Receipt matching panel with local suggestions for attaching inbox receipts to expenses that are missing receipts
+- Single and batch draft-expense creation from downloaded inbox receipts that are not already in the ledger
+- Local vendor rules for categorizing recurring merchants without connecting to a service
+- Tax-year report view with formula-safe CSV preview and file export
+- Settings view for local vendor rules and privacy guarantees
 
-**Free**
-- Manual balance tracking — enter paychecks, record payments, see what remains
-- Bill management — monthly, annual, weekly, biweekly, quarterly, and one-time
-- Dashboard with balance summary and upcoming bills
-- iCloud sync via CloudKit (encrypted, private container)
+## Privacy Model
 
-**Remnant+ (Premium)**
-- Unlimited accounts and bills
-- Planning mode — simulate payments before committing
-- Year view — 12-month spreadsheet grid of all bills
-- Analytics — category breakdown and monthly spending trends
-- Bill reminders with configurable lead time
-- CSV export by year
-- Custom categories with icons and colors
+Remnant is intentionally local-only.
 
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| UI | SwiftUI (iOS 26+) |
-| Data | SwiftData + CloudKit |
-| State | `@Observable` pattern |
-| Subscriptions | StoreKit 2 |
-| Charts | Swift Charts |
-| Notifications | UserNotifications (local) |
-| Language | Swift 6 |
-| Build | XcodeGen |
+- No analytics or tracking SDKs
+- No bank linking or FinanceKit access
+- No StoreKit subscription gates
+- No CloudKit or iCloud sync
+- No network calls in the active app target
+- Receipt files are copied into a local receipt vault only after explicit user selection
+- CSV export is an explicit user action
 
 ## Project Structure
 
-```
+```text
 Remnant/
-├── App/                  # Entry point, environment, root view
-├── Models/               # SwiftData @Model classes
-├── Services/             # Business logic layer
-│   ├── AccountService
-│   ├── BillService
-│   ├── PaymentService
-│   ├── IncomeService
-│   ├── CategoryService
-│   ├── ReminderService
-│   ├── SubscriptionService
-│   └── ExportService
-├── Views/
-│   ├── Dashboard/        # Balance summary, record payments
-│   ├── Bills/            # List, detail, form
-│   ├── Planning/         # Payment simulation
-│   ├── Analytics/        # Monthly view, year view, charts
-│   ├── Income/           # Sources and entries
-│   ├── Settings/         # Accounts, categories, subscription
-│   ├── Onboarding/       # First-launch flow
-│   └── Components/       # BillRow, CurrencyField, PremiumGate
-├── Resources/            # Colors, design tokens
-├── Extensions/           # Date + Decimal helpers
-└── Utilities/            # Logging
+├── App/                  # macOS app entry point and root navigation
+├── ExpenseTracker/
+│   ├── Models/           # SwiftData models and CSV document export wrapper
+│   ├── Services/         # Ledger, CSV import, receipt vault
+│   └── Views/            # Dashboard, expenses, imports, reports, privacy
+├── Resources/            # Colors and design tokens
+├── Extensions/           # Date and Decimal helpers
+├── Assets.xcassets
+├── Info.plist
+└── PrivacyInfo.xcprivacy
 ```
-
-## Architecture
-
-Remnant uses a service-based architecture with `AppEnvironment` as the central dependency container. All services are `@Observable` classes injected through the SwiftUI environment.
-
-Data flows through SwiftData models synced automatically via CloudKit to a private iCloud container — no server, no third-party backend.
-
-## Pricing
-
-| Tier | Price | Includes |
-|------|-------|----------|
-| Free | $0 | 1 account, 15 bills, dashboard, current month |
-| Remnant+ Monthly | $3.99/mo | Unlimited everything, all premium features |
-| Remnant+ Annual | $29.99/yr | Same as monthly, save 37% |
 
 ## Requirements
 
-- iOS 26.0+
-- Xcode 26+
+- macOS 26.0+
+- Xcode with the macOS 26 SDK
 - Swift 6
+- XcodeGen
 
-## Setup
+## Build And Run
 
-1. Clone the repository
-2. Install [XcodeGen](https://github.com/yonaskolb/XcodeGen) if needed: `brew install xcodegen`
-3. Run `xcodegen generate` (or open the existing `.xcodeproj`)
-4. Set your development team in Signing & Capabilities
-5. Configure the CloudKit container: `iCloud.com.borrowedfire.remnant`
-6. Build and run
+```sh
+xcodegen generate
+./script/build_and_run.sh
+```
 
-## Privacy
+The Codex app Run action is wired through:
 
-Remnant collects no user data. All financial information stays on-device and in your private iCloud container. No analytics, no tracking, no bank connections.
+```text
+.codex/environments/environment.toml
+```
 
-See [Privacy Policy](https://borrowedfire.com/privacy-policy/) and [Terms of Service](https://borrowedfire.com/terms-of-service/).
+Useful verification commands:
+
+```sh
+./script/build_and_run.sh --verify
+xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData test
+```
+
+## Replacement Scope
+
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, bulk-review imported expenses, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, and export tax-year CSV reports.
+
+Still planned: image OCR for scanned receipt files.
 
 ## License
 

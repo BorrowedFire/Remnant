@@ -17,28 +17,14 @@ extension Color {
         static let deepEvergreen = Color(hex: "1B512D")
 
         // Surfaces — dark first, green-tinted
-        static let background = Color(UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.03, green: 0.06, blue: 0.04, alpha: 1)   // #080F0A
-                : UIColor.systemBackground
-        })
-
-        static let surface = Color(UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.06, green: 0.10, blue: 0.07, alpha: 1)   // #0F1A12
-                : UIColor.secondarySystemBackground
-        })
-
-        static let surfaceElevated = Color(UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.09, green: 0.14, blue: 0.10, alpha: 1)   // #172419
-                : UIColor.tertiarySystemBackground
-        })
+        static let background = Color(nsColor: .windowBackgroundColor)
+        static let surface = Color(nsColor: .controlBackgroundColor)
+        static let surfaceElevated = Color(nsColor: .underPageBackgroundColor)
 
         // Text
-        static let textPrimary = Color(UIColor.label)
-        static let textSecondary = Color(UIColor.secondaryLabel)
-        static let textTertiary = Color(UIColor.tertiaryLabel)
+        static let textPrimary = Color(nsColor: .labelColor)
+        static let textSecondary = Color(nsColor: .secondaryLabelColor)
+        static let textTertiary = Color(nsColor: .tertiaryLabelColor)
 
         // Semantic
         static let positive = Color(hex: "73E2A7")  // Mint Bloom
