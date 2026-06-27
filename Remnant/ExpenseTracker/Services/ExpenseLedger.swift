@@ -176,6 +176,36 @@ enum ExpenseLedger {
         return ([header.map(csvCell).joined(separator: ",")] + rows).joined(separator: "\n")
     }
 
+    static func exportTaxBucketSummaryCSV(expenses: [Expense], categories: [ExpenseCategory] = []) -> String {
+        let header = [
+            "Tax Bucket",
+            "Expense Count",
+            "Amount"
+        ]
+        let grouped = Dictionary(grouping: expenses) { expense in
+            taxBucket(for: expense.categoryName, categories: categories)
+        }
+        let summaries: [(bucket: String, count: Int, total: Decimal)] = grouped
+            .map { element in
+                let total = element.value.reduce(Decimal(0)) { $0 + $1.amount }
+                return (bucket: element.key, count: element.value.count, total: total)
+            }
+
+        let rows = summaries
+            .sorted { lhs, rhs in
+                lhs.bucket.localizedCaseInsensitiveCompare(rhs.bucket) == .orderedAscending
+            }
+            .map { row in
+                [
+                    row.bucket,
+                    "\(row.count)",
+                    "\(row.total)"
+                ].map(csvCell).joined(separator: ",")
+            }
+
+        return ([header.map(csvCell).joined(separator: ",")] + rows).joined(separator: "\n")
+    }
+
     static func taxBucket(for categoryName: String?, categories: [ExpenseCategory]) -> String {
         guard let normalizedCategory = normalizedOptional(categoryName) else {
             return "Needs review"

@@ -110,6 +110,39 @@ struct ExpenseLedgerTests {
         #expect(csv.contains("\"Acme\",\"Launch\",\"Yes\",\"Yes\""))
     }
 
+    @Test("Tax bucket summary CSV groups and sorts buckets")
+    func taxBucketSummaryCSVGroupsAndSortsBuckets() {
+        let software = Expense(merchant: "OpenAI", amount: 20, categoryName: "AI Tools")
+        let hosting = Expense(merchant: "Fly", amount: 15, categoryName: "Hosting")
+        let uncategorized = Expense(merchant: "Unknown", amount: 5, categoryName: "Uncategorized")
+        let categories = [
+            ExpenseCategory(name: "AI Tools", taxBucket: "Office expense", icon: "sparkles", colorHex: "8B5CF6"),
+            ExpenseCategory(name: "Hosting", taxBucket: "Utilities", icon: "server.rack", colorHex: "06B6D4")
+        ]
+
+        let csv = ExpenseLedger.exportTaxBucketSummaryCSV(
+            expenses: [software, hosting, uncategorized],
+            categories: categories
+        )
+
+        #expect(csv.split(separator: "\n").map(String.init) == [
+            "\"Tax Bucket\",\"Expense Count\",\"Amount\"",
+            "\"Needs review\",\"1\",\"5\"",
+            "\"Office expense\",\"1\",\"20\"",
+            "\"Utilities\",\"1\",\"15\""
+        ])
+    }
+
+    @Test("Tax bucket summary CSV is formula safe")
+    func taxBucketSummaryCSVIsFormulaSafe() {
+        let expense = Expense(merchant: "Vendor", amount: 20, categoryName: "Risky")
+        let category = ExpenseCategory(name: "Risky", taxBucket: "=SUM(1,1)", icon: "folder", colorHex: "6B7280")
+
+        let csv = ExpenseLedger.exportTaxBucketSummaryCSV(expenses: [expense], categories: [category])
+
+        #expect(csv.contains("\"'=SUM(1,1)\",\"1\",\"20\""))
+    }
+
     @Test("Expenses can be filtered by reporting dimension")
     func expensesCanBeFilteredByReportingDimension() {
         let launch = Expense(merchant: "OpenAI", amount: 20, projectName: "Launch")
