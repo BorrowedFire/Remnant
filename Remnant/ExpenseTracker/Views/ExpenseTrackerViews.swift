@@ -129,7 +129,7 @@ struct ExpenseDashboardView: View {
 
     private var dashboardHeader: some View {
         HStack(alignment: .center) {
-            header("Dashboard", subtitle: "Expense tracking for Borrowed Fire LLC. Data stays on this Mac.")
+            header("Dashboard", subtitle: "Expense tracking for your business. Data stays on this Mac.")
             Spacer()
             Text("Expense-only")
                 .font(.caption.weight(.semibold))
@@ -466,8 +466,7 @@ struct ExpenseListView: View {
                                 statusButton("Ignore", systemImage: "eye.slash", status: .ignored, expenses: [expense])
                                 Divider()
                                 Button("Delete", systemImage: "trash", role: .destructive) {
-                                    modelContext.delete(expense)
-                                    try? modelContext.save()
+                                    deleteExpense(expense)
                                 }
                             }
                     }
@@ -545,6 +544,16 @@ struct ExpenseListView: View {
         guard !expenses.isEmpty else { return }
         _ = ExpenseLedger.updateStatus(of: expenses, to: status)
         try? modelContext.save()
+    }
+
+    private func deleteExpense(_ expense: Expense) {
+        do {
+            try ReceiptVault.unlinkAttachments(from: expense, context: modelContext)
+            modelContext.delete(expense)
+            try modelContext.save()
+        } catch {
+            return
+        }
     }
 }
 
@@ -707,11 +716,17 @@ struct ExpenseFormView: View {
         do {
             let importedAttachment: ReceiptAttachment?
             if let receiptURL {
-                importedAttachment = try ReceiptVault.importReceipt(
+                let importResult = try ReceiptVault.importReceipt(
                     at: receiptURL,
                     context: modelContext,
                     expense: nil
-                ).attachment
+                )
+                if case .duplicateLinked(let expenseID) = importResult.status,
+                   expenseID != target.id {
+                    receiptImportError = "That receipt is already linked to another expense."
+                    return
+                }
+                importedAttachment = importResult.attachment
             } else {
                 importedAttachment = nil
             }

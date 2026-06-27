@@ -35,16 +35,8 @@ final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: NSWindow?
 
     override init() {
-        let schema = Schema([
-            Expense.self,
-            ReceiptAttachment.self,
-            ExpenseCategory.self,
-            ImportBatch.self,
-            VendorRule.self
-        ])
-
         do {
-            container = try ModelContainer(for: schema)
+            container = try RemnantStore.makeContainer()
         } catch {
             fatalError("Failed to create local expense store: \(error)")
         }
@@ -98,5 +90,40 @@ final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+enum RemnantStore {
+    static let configurationName = "RemnantExpenseTrackerV1"
+    static let storeFilename = "RemnantExpenseTrackerV1.store"
+
+    static var schema: Schema {
+        Schema([
+            Expense.self,
+            ReceiptAttachment.self,
+            ExpenseCategory.self,
+            ImportBatch.self,
+            VendorRule.self
+        ])
+    }
+
+    static func makeContainer(storeURL: URL? = nil) throws -> ModelContainer {
+        let schema = schema
+        let url = try storeURL ?? defaultStoreURL()
+        let configuration = ModelConfiguration(configurationName, schema: schema, url: url)
+        return try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    static func defaultStoreURL() throws -> URL {
+        guard let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+
+        let directory = applicationSupport.appendingPathComponent("com.borrowedfire.remnant", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent(storeFilename)
     }
 }

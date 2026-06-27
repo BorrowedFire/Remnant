@@ -95,6 +95,19 @@ struct ExpenseLedgerTests {
         #expect(categories.count == ExpenseCategory.defaultCategoryDefinitions.count)
     }
 
+    @Test("Expense store can use explicit 1.0 store URL")
+    func expenseStoreCanUseExplicitV1StoreURL() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("RemnantExpenseTrackerV1.store")
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let expense = Expense(merchant: "OpenAI", amount: 20)
+
+        container.mainContext.insert(expense)
+        try container.mainContext.save()
+
+        #expect(FileManager.default.fileExists(atPath: storeURL.path))
+    }
+
     @Test("CSV import parses accepted expenses and skips credit rows")
     func csvImportParsesAcceptedExpensesAndSkipsCreditRows() throws {
         let csv = """
@@ -403,6 +416,39 @@ struct ExpenseLedgerTests {
         #expect(attachments.count == 1)
     }
 
+    @Test("Receipt vault does not relink duplicate attached receipt")
+    func receiptVaultDoesNotRelinkDuplicateAttachedReceipt() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let sourceURL = try writeTemporaryFile(named: "duplicate-linked.txt", contents: "same linked receipt")
+        let vaultURL = try makeTemporaryDirectory()
+        let originalExpense = Expense(merchant: "Original", amount: 20)
+        let newExpense = Expense(merchant: "New", amount: 20)
+        context.insert(originalExpense)
+        context.insert(newExpense)
+
+        let first = try ReceiptVault.importReceipt(
+            at: sourceURL,
+            context: context,
+            expense: originalExpense,
+            vaultDirectory: vaultURL
+        )
+        let second = try ReceiptVault.importReceipt(
+            at: sourceURL,
+            context: context,
+            expense: newExpense,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        #expect(first.status == .imported)
+        #expect(second.status == .duplicateLinked(expenseID: originalExpense.id))
+        #expect(second.attachment.expenseID == originalExpense.id)
+        #expect(originalExpense.receiptAttachmentID == first.attachment.id)
+        #expect(newExpense.receiptAttachmentID == nil)
+        #expect(newExpense.receiptContentHash == nil)
+    }
+
     @Test("Receipt vault linking clears missing receipt state")
     func receiptVaultLinkingClearsMissingReceiptState() {
         let expense = Expense(merchant: "Apple", amount: 15)
@@ -419,6 +465,30 @@ struct ExpenseLedgerTests {
         #expect(expense.receiptFilename == "apple.pdf")
         #expect(expense.receiptContentHash == "abc123")
         #expect(ExpenseLedger.expensesMissingReceipts(in: [expense]).isEmpty)
+    }
+
+    @Test("Receipt vault unlinks attachments before expense deletion")
+    func receiptVaultUnlinksAttachmentsBeforeExpenseDeletion() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let expense = Expense(merchant: "Apple", amount: 15)
+        let attachment = ReceiptAttachment(
+            originalFilename: "apple.pdf",
+            localPath: "/tmp/apple.pdf",
+            contentHash: "abc123"
+        )
+        context.insert(expense)
+        context.insert(attachment)
+        ReceiptVault.link(attachment: attachment, to: expense)
+
+        let changedCount = try ReceiptVault.unlinkAttachments(from: expense, context: context)
+
+        #expect(changedCount == 1)
+        #expect(attachment.expenseID == nil)
+        #expect(expense.receiptAttachmentID == nil)
+        #expect(expense.receiptFilename == nil)
+        #expect(expense.receiptContentHash == nil)
+        #expect(!ExpenseLedger.expensesMissingReceipts(in: [expense]).isEmpty)
     }
 
     @Test("Receipt vault creates draft expenses from usable receipt metadata")
@@ -472,7 +542,7 @@ struct ExpenseLedgerTests {
         #expect(expense.amount == 20)
         #expect(expense.categoryName == "Software")
         #expect(expense.status == .draft)
-        #expect(expense.source == .gmailReview)
+        #expect(expense.source == .receiptDraft)
         #expect(expense.receiptAttachmentID == eligible.id)
         #expect(eligible.expenseID == expense.id)
         #expect(amountless.expenseID == nil)

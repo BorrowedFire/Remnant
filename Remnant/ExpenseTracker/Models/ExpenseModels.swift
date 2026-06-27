@@ -12,7 +12,7 @@ enum ExpenseSource: String, Codable, CaseIterable {
     case manual
     case csvImport
     case waveImport
-    case gmailReview
+    case receiptDraft
 }
 
 enum ExpenseImportMode: String, Codable, CaseIterable, Identifiable {
