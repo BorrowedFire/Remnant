@@ -66,6 +66,43 @@ struct ExpenseLedgerTests {
         #expect(csv.contains("\"AI Tools\",\"Office expense\""))
     }
 
+    @Test("CSV export includes reporting dimension fields")
+    func csvExportIncludesReportingDimensionFields() {
+        let expense = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            paymentAccount: "Amex",
+            vendorName: "OpenAI",
+            clientName: "Acme",
+            projectName: "Launch"
+        )
+
+        let csv = ExpenseLedger.exportCSV(expenses: [expense])
+
+        #expect(csv.starts(with: "\"Date\",\"Merchant\",\"Amount\",\"Currency\",\"Category\",\"Tax Bucket\",\"Account\",\"Vendor\",\"Client\",\"Project\""))
+        #expect(csv.contains("\"Amex\",\"OpenAI\",\"Acme\",\"Launch\""))
+    }
+
+    @Test("Reporting dimension values fall back for existing expenses")
+    func reportingDimensionValuesFallBackForExistingExpenses() {
+        let expense = Expense(merchant: "Stripe", amount: 10, paymentAccount: "Checking", vendorName: "")
+
+        #expect(ExpenseLedger.dimensionValue(for: expense, kind: .account) == "Checking")
+        #expect(ExpenseLedger.dimensionValue(for: expense, kind: .vendor) == "Stripe")
+        #expect(ExpenseLedger.dimensionValue(for: expense, kind: .client) == "")
+        #expect(ExpenseLedger.dimensionValue(for: expense, kind: .project) == "")
+    }
+
+    @Test("Expenses can be filtered by reporting dimension")
+    func expensesCanBeFilteredByReportingDimension() {
+        let launch = Expense(merchant: "OpenAI", amount: 20, projectName: "Launch")
+        let support = Expense(merchant: "Apple", amount: 99, projectName: "Support")
+
+        let filtered = ExpenseLedger.expenses([launch, support], matching: .project, value: "launch")
+
+        #expect(filtered.map(\.id) == [launch.id])
+    }
+
     @Test("Missing receipt filtering excludes ignored expenses")
     func missingReceiptFilteringExcludesIgnoredExpenses() {
         let missing = Expense(merchant: "No Receipt", amount: 10)
@@ -100,7 +137,7 @@ struct ExpenseLedgerTests {
     func defaultCategorySeedingInsertsDefaultsOnce() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
-            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, ImportBatch.self, VendorRule.self,
+            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, ImportBatch.self, VendorRule.self,
             configurations: config
         )
 
@@ -161,6 +198,23 @@ struct ExpenseLedgerTests {
         #expect(softwareRows.count == 1)
         #expect(softwareRows.first?.taxBucket == "Custom software bucket")
         #expect(categories.contains { $0.name == "AI Tools" })
+    }
+
+    @Test("Business dimensions persist locally")
+    func businessDimensionsPersistLocally() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        context.insert(BusinessDimension(kind: .account, name: "Amex", sortOrder: 0))
+        context.insert(BusinessDimension(kind: .vendor, name: "OpenAI", sortOrder: 1))
+        context.insert(BusinessDimension(kind: .client, name: "Acme", sortOrder: 2))
+        context.insert(BusinessDimension(kind: .project, name: "Launch", sortOrder: 3))
+        try context.save()
+
+        let dimensions = try context.fetch(FetchDescriptor<BusinessDimension>())
+        let kinds = Set(dimensions.map(\.kind))
+
+        #expect(dimensions.count == 4)
+        #expect(kinds == Set(BusinessDimensionKind.allCases))
     }
 
     @Test("Expense store can use explicit 1.0 store URL")
@@ -774,7 +828,7 @@ struct ExpenseLedgerTests {
     private func makeExpenseContainer() throws -> ModelContainer {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         return try ModelContainer(
-            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, ImportBatch.self, VendorRule.self,
+            for: Expense.self, ReceiptAttachment.self, ExpenseCategory.self, BusinessDimension.self, ImportBatch.self, VendorRule.self,
             configurations: config
         )
     }
