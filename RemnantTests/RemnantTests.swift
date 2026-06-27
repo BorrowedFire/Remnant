@@ -707,6 +707,31 @@ struct ExpenseLedgerTests {
         #expect(metadata.amount == 99)
     }
 
+    @Test("Receipt metadata parser handles OCR-style text fixtures")
+    func receiptMetadataParserHandlesOCRStyleTextFixtures() throws {
+        let text = """
+        FATED PAGES LLC
+        PAYMENT RECEIPT
+        TRANSACTION DATE
+        Jun 12, 2026
+        CARD ENDING 4242
+        SUBTOTAL
+        $27.00
+        TAX
+        $1.89
+        AMOUNT PAID
+        $28.89
+        """
+
+        let metadata = ReceiptMetadataExtractor.parse(text: text, fallbackFilename: "scanned-receipt.png")
+        let expectedDate = try makeUTCDate(year: 2026, month: 6, day: 12)
+
+        #expect(metadata.merchant == "FATED PAGES LLC")
+        #expect(metadata.date == expectedDate)
+        #expect(metadata.amount == 28.89)
+        #expect(metadata.confidence > 0.8)
+    }
+
     @Test("Receipt vault copies files into a local hashed path")
     func receiptVaultCopiesFilesIntoLocalHashedPath() throws {
         let container = try makeExpenseContainer()

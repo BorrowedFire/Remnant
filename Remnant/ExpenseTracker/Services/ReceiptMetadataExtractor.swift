@@ -1,7 +1,15 @@
 import Foundation
 
+#if canImport(AppKit)
+import AppKit
+#endif
+
 #if canImport(PDFKit)
 import PDFKit
+#endif
+
+#if canImport(Vision)
+import Vision
 #endif
 
 struct ReceiptMetadata {
@@ -13,6 +21,20 @@ struct ReceiptMetadata {
 }
 
 enum ReceiptMetadataExtractor {
+    private static let imageExtensions = Set([
+        "bmp",
+        "gif",
+        "heif",
+        "heic",
+        "jpeg",
+        "jpg",
+        "png",
+        "tif",
+        "tiff",
+        "webp"
+    ])
+    private static let textExtensions = Set(["csv", "text", "txt"])
+
     static func extract(from sourceURL: URL, data: Data) -> ReceiptMetadata {
         let text = textContent(from: sourceURL, data: data)
         return parse(text: text, fallbackFilename: sourceURL.lastPathComponent)
@@ -49,23 +71,27 @@ enum ReceiptMetadataExtractor {
 
         #if canImport(PDFKit)
         if pathExtension == "pdf", let document = PDFDocument(data: data) {
-            return (0..<document.pageCount)
-                .compactMap { document.page(at: $0)?.string }
-                .joined(separator: "\n")
+            return textContent(from: document)
         }
         #endif
 
-        let textExtensions = Set(["csv", "text", "txt"])
+        if imageExtensions.contains(pathExtension) {
+            return ocrText(fromImageData: data)
+        }
+
         guard textExtensions.contains(pathExtension) else {
             return ""
         }
 
+        return decodedPlainText(from: data)
+    }
+
+    private static func decodedPlainText(from data: Data) -> String {
         for encoding in [String.Encoding.utf8, .utf16, .ascii, .isoLatin1] {
             if let text = String(data: data, encoding: encoding) {
                 return text
             }
         }
-
         return ""
     }
 
@@ -254,3 +280,87 @@ enum ReceiptMetadataExtractor {
         return regex.stringByReplacingMatches(in: text, range: range, withTemplate: replacement)
     }
 }
+
+#if canImport(PDFKit)
+extension ReceiptMetadataExtractor {
+    private static func textContent(from document: PDFDocument) -> String {
+        (0..<document.pageCount)
+            .compactMap { pageIndex in
+                guard let page = document.page(at: pageIndex) else { return nil }
+                let embeddedText = page.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !embeddedText.isEmpty {
+                    return embeddedText
+                }
+                return ocrText(from: page)
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+}
+#endif
+
+#if canImport(AppKit) && canImport(PDFKit) && canImport(Vision)
+extension ReceiptMetadataExtractor {
+    private static func ocrText(from page: PDFPage) -> String {
+        let bounds = page.bounds(for: .mediaBox)
+        let longestSide = max(bounds.width, bounds.height)
+        guard longestSide > 0 else { return "" }
+
+        let scale = min(1800 / longestSide, 3)
+        let imageSize = CGSize(
+            width: max(bounds.width * scale, 1),
+            height: max(bounds.height * scale, 1)
+        )
+        return ocrText(from: page.thumbnail(of: imageSize, for: .mediaBox))
+    }
+}
+#elseif canImport(PDFKit)
+extension ReceiptMetadataExtractor {
+    private static func ocrText(from _: PDFPage) -> String {
+        ""
+    }
+}
+#endif
+
+#if canImport(AppKit) && canImport(Vision)
+extension ReceiptMetadataExtractor {
+    private static func ocrText(fromImageData data: Data) -> String {
+        guard let image = NSImage(data: data) else { return "" }
+        return ocrText(from: image)
+    }
+
+    private static func ocrText(from image: NSImage) -> String {
+        var proposedRect = NSRect(origin: .zero, size: image.size)
+        guard let cgImage = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+            return ""
+        }
+        return ocrText(from: cgImage)
+    }
+
+    private static func ocrText(from cgImage: CGImage) -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.recognitionLanguages = ["en-US"]
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            return ""
+        }
+
+        return (request.results ?? [])
+            .compactMap { observation in
+                observation.topCandidates(1).first?.string
+            }
+            .joined(separator: "\n")
+    }
+}
+#else
+extension ReceiptMetadataExtractor {
+    private static func ocrText(fromImageData _: Data) -> String {
+        ""
+    }
+}
+#endif
