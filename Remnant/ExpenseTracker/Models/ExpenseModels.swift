@@ -123,6 +123,8 @@ final class Expense {
     var vendorName: String = ""
     var clientName: String = ""
     var projectName: String = ""
+    var isBillable: Bool = false
+    var isReimbursable: Bool = false
     var taxYear: Int = Calendar.current.component(.year, from: Date())
     var status: ExpenseStatus = ExpenseStatus.draft
     var source: ExpenseSource = ExpenseSource.manual
@@ -145,6 +147,8 @@ final class Expense {
         vendorName: String? = nil,
         clientName: String = "",
         projectName: String = "",
+        isBillable: Bool = false,
+        isReimbursable: Bool? = nil,
         taxYear: Int? = nil,
         status: ExpenseStatus = .draft,
         source: ExpenseSource = .manual,
@@ -165,6 +169,8 @@ final class Expense {
         self.vendorName = vendorName ?? merchant
         self.clientName = clientName
         self.projectName = projectName
+        self.isBillable = isBillable
+        self.isReimbursable = isReimbursable ?? (status == .reimbursable)
         self.taxYear = taxYear ?? Calendar.current.component(.year, from: date)
         self.status = status
         self.source = source

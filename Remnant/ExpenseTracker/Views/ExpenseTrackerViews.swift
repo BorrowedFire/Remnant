@@ -418,6 +418,7 @@ struct ExpenseListView: View {
 
     @State private var searchText = ""
     @State private var reviewFilter = ExpenseReviewFilter.needsReview
+    @State private var followUpFilter = ExpenseFollowUpFilter.all
     @State private var dimensionFilterKind: BusinessDimensionKind?
     @State private var dimensionFilterValue = ""
     @State private var isShowingForm = false
@@ -426,15 +427,16 @@ struct ExpenseListView: View {
 
     private var filteredExpenses: [Expense] {
         let reviewFiltered = expenses.filter { reviewFilter.includes($0, allExpenses: expenses) }
+        let followUpFiltered = followUpFilter.expenses(in: reviewFiltered)
         let dimensionFiltered: [Expense]
         if let dimensionFilterKind, !dimensionFilterValue.isEmpty {
             dimensionFiltered = ExpenseLedger.expenses(
-                reviewFiltered,
+                followUpFiltered,
                 matching: dimensionFilterKind,
                 value: dimensionFilterValue
             )
         } else {
-            dimensionFiltered = reviewFiltered
+            dimensionFiltered = followUpFiltered
         }
 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -463,8 +465,22 @@ struct ExpenseListView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .onChange(of: reviewFilter) { _, _ in
+                selectedExpenseIDs.removeAll()
+            }
 
             HStack(spacing: Spacing.md) {
+                Picker("Follow-up", selection: $followUpFilter) {
+                    ForEach(ExpenseFollowUpFilter.allCases) { filter in
+                        Text(filter.label).tag(filter)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 190)
+                .onChange(of: followUpFilter) { _, _ in
+                    selectedExpenseIDs.removeAll()
+                }
+
                 Picker("Dimension", selection: $dimensionFilterKind) {
                     Text("All Dimensions").tag(Optional<BusinessDimensionKind>.none)
                     ForEach(BusinessDimensionKind.allCases) { kind in
@@ -508,8 +524,14 @@ struct ExpenseListView: View {
                                 }
                                 Divider()
                                 statusButton("Mark Reviewed", systemImage: "checkmark.circle", status: .reviewed, expenses: [expense])
-                                statusButton("Mark Reimbursable", systemImage: "arrow.uturn.left.circle", status: .reimbursable, expenses: [expense])
                                 statusButton("Ignore", systemImage: "eye.slash", status: .ignored, expenses: [expense])
+                                Divider()
+                                followUpButton("Mark Billable", systemImage: "briefcase", expenses: [expense]) {
+                                    $0.isBillable = true
+                                }
+                                followUpButton("Mark Reimbursable", systemImage: "arrow.uturn.left.circle", expenses: [expense]) {
+                                    $0.isReimbursable = true
+                                }
                                 Divider()
                                 Button("Delete", systemImage: "trash", role: .destructive) {
                                     deleteExpense(expense)
@@ -544,8 +566,11 @@ struct ExpenseListView: View {
                         Label("Ignore", systemImage: "eye.slash")
                     }
                     Menu {
+                        Button("Mark Billable") {
+                            updateSelectedFollowUp { $0.isBillable = true }
+                        }
                         Button("Mark Reimbursable") {
-                            updateSelectedStatus(.reimbursable)
+                            updateSelectedFollowUp { $0.isReimbursable = true }
                         }
                         Button("Mark Draft") {
                             updateSelectedStatus(.draft)
@@ -597,14 +622,40 @@ struct ExpenseListView: View {
         .disabled(expenses.allSatisfy { $0.status == status })
     }
 
+    private func followUpButton(
+        _ title: String,
+        systemImage: String,
+        expenses: [Expense],
+        update: @escaping (Expense) -> Void
+    ) -> some View {
+        Button(title, systemImage: systemImage) {
+            updateFollowUp(for: expenses, update: update)
+        }
+    }
+
     private func updateSelectedStatus(_ status: ExpenseStatus) {
         updateStatus(status, for: selectedExpenses)
+        selectedExpenseIDs.removeAll()
+    }
+
+    private func updateSelectedFollowUp(update: @escaping (Expense) -> Void) {
+        updateFollowUp(for: selectedExpenses, update: update)
         selectedExpenseIDs.removeAll()
     }
 
     private func updateStatus(_ status: ExpenseStatus, for expenses: [Expense]) {
         guard !expenses.isEmpty else { return }
         _ = ExpenseLedger.updateStatus(of: expenses, to: status)
+        try? modelContext.save()
+    }
+
+    private func updateFollowUp(for expenses: [Expense], update: (Expense) -> Void) {
+        guard !expenses.isEmpty else { return }
+        let now = Date()
+        for expense in expenses {
+            update(expense)
+            expense.updatedAt = now
+        }
         try? modelContext.save()
     }
 
@@ -661,6 +712,38 @@ private enum ExpenseReviewFilter: String, CaseIterable, Identifiable {
     }
 }
 
+private enum ExpenseFollowUpFilter: String, CaseIterable, Identifiable {
+    case all
+    case billableOrReimbursable
+    case billable
+    case reimbursable
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: "All Expenses"
+        case .billableOrReimbursable: "Billable/Reimbursable"
+        case .billable: "Billable"
+        case .reimbursable: "Reimbursable"
+        }
+    }
+
+    @MainActor
+    func expenses(in expenses: [Expense]) -> [Expense] {
+        switch self {
+        case .all:
+            expenses
+        case .billableOrReimbursable:
+            ExpenseLedger.outstandingFollowUpExpenses(in: expenses)
+        case .billable:
+            ExpenseLedger.outstandingBillableExpenses(in: expenses)
+        case .reimbursable:
+            ExpenseLedger.outstandingReimbursableExpenses(in: expenses)
+        }
+    }
+}
+
 struct ExpenseFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -681,6 +764,8 @@ struct ExpenseFormView: View {
     @State private var vendorName = ""
     @State private var clientName = ""
     @State private var projectName = ""
+    @State private var isBillable = false
+    @State private var isReimbursable = false
     @State private var note = ""
     @State private var receiptFilename = ""
     @State private var receiptURL: URL?
@@ -699,6 +784,8 @@ struct ExpenseFormView: View {
         _vendorName = State(initialValue: expense?.vendorName ?? "")
         _clientName = State(initialValue: expense?.clientName ?? "")
         _projectName = State(initialValue: expense?.projectName ?? "")
+        _isBillable = State(initialValue: expense?.isBillable ?? false)
+        _isReimbursable = State(initialValue: expense.map { $0.isReimbursable || $0.status == .reimbursable } ?? false)
         _note = State(initialValue: expense?.note ?? "")
         _receiptFilename = State(initialValue: expense?.receiptFilename ?? "")
     }
@@ -722,6 +809,8 @@ struct ExpenseFormView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                Toggle("Billable", isOn: $isBillable)
+                Toggle("Reimbursable", isOn: $isReimbursable)
                 dimensionPicker("Account", kind: .account, selection: $paymentAccount, emptyLabel: "None")
                 dimensionPicker("Vendor", kind: .vendor, selection: $vendorName, emptyLabel: "Use merchant")
                 dimensionPicker("Client", kind: .client, selection: $clientName, emptyLabel: "None")
@@ -861,6 +950,8 @@ struct ExpenseFormView: View {
         target.vendorName = vendorName.trimmingCharacters(in: .whitespacesAndNewlines)
         target.clientName = clientName.trimmingCharacters(in: .whitespacesAndNewlines)
         target.projectName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.isBillable = isBillable
+        target.isReimbursable = isReimbursable || status == .reimbursable
         target.taxYear = Calendar.current.component(.year, from: date)
         target.receiptFilename = receiptFilename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : receiptFilename
         target.updatedAt = Date()
@@ -1353,6 +1444,47 @@ private struct ReceiptReconciliationPanel: View {
     }
 }
 
+private enum ReportExportScope: String, CaseIterable, Identifiable {
+    case all
+    case billableOrReimbursable
+    case billable
+    case reimbursable
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .all: "All Expenses"
+        case .billableOrReimbursable: "Billable/Reimbursable"
+        case .billable: "Billable"
+        case .reimbursable: "Reimbursable"
+        }
+    }
+
+    var filenameSuffix: String {
+        switch self {
+        case .all: "expenses"
+        case .billableOrReimbursable: "follow-up-expenses"
+        case .billable: "billable-expenses"
+        case .reimbursable: "reimbursable-expenses"
+        }
+    }
+
+    @MainActor
+    func expenses(in expenses: [Expense]) -> [Expense] {
+        switch self {
+        case .all:
+            expenses
+        case .billableOrReimbursable:
+            ExpenseLedger.outstandingFollowUpExpenses(in: expenses)
+        case .billable:
+            ExpenseLedger.outstandingBillableExpenses(in: expenses)
+        case .reimbursable:
+            ExpenseLedger.outstandingReimbursableExpenses(in: expenses)
+        }
+    }
+}
+
 struct ReportsView: View {
     @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
     private var expenses: [Expense]
@@ -1360,6 +1492,7 @@ struct ReportsView: View {
     private var categories: [ExpenseCategory]
 
     @State private var taxYear = Calendar.current.component(.year, from: Date())
+    @State private var exportScope = ReportExportScope.all
     @State private var isExportingCSV = false
     @State private var exportError: String?
 
@@ -1368,23 +1501,40 @@ struct ReportsView: View {
         return expenses.filter { interval.contains($0.date) && $0.status != .ignored }
     }
 
+    private var expensesForExport: [Expense] {
+        exportScope.expenses(in: expensesForYear)
+    }
+
     private var exportCSV: String {
-        ExpenseLedger.exportCSV(expenses: expensesForYear, categories: categories)
+        ExpenseLedger.exportCSV(expenses: expensesForExport, categories: categories)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             header("Reports", subtitle: "Exportable summaries for accountant and tax review.")
 
-            Picker("Tax Year", selection: $taxYear) {
-                ForEach((2023...Calendar.current.component(.year, from: Date()) + 1), id: \.self) { year in
-                    Text("\(year)").tag(year)
+            HStack(spacing: Spacing.md) {
+                Picker("Tax Year", selection: $taxYear) {
+                    ForEach((2023...Calendar.current.component(.year, from: Date()) + 1), id: \.self) { year in
+                        Text("\(year)").tag(year)
+                    }
                 }
-            }
-            .pickerStyle(.menu)
-            .frame(width: 180)
+                .pickerStyle(.menu)
+                .frame(width: 180)
 
-            metric("Year Total", ExpenseLedger.totalSpent(in: expenses, for: ExpenseLedger.yearInterval(taxYear)).currencyFormatted)
+                Picker("Export Scope", selection: $exportScope) {
+                    ForEach(ReportExportScope.allCases) { scope in
+                        Text(scope.label).tag(scope)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 220)
+            }
+
+            HStack(spacing: Spacing.lg) {
+                metric("Year Total", ExpenseLedger.totalSpent(in: expenses, for: ExpenseLedger.yearInterval(taxYear)).currencyFormatted)
+                metric("Export Rows", "\(expensesForExport.count)")
+            }
 
             HStack {
                 Button {
@@ -1392,7 +1542,7 @@ struct ReportsView: View {
                 } label: {
                     Label("Export CSV", systemImage: "square.and.arrow.up")
                 }
-                .disabled(expensesForYear.isEmpty)
+                .disabled(expensesForExport.isEmpty)
 
                 if let exportError {
                     Text(exportError)
@@ -1413,7 +1563,7 @@ struct ReportsView: View {
             isPresented: $isExportingCSV,
             document: ExpenseCSVDocument(csv: exportCSV),
             contentType: .commaSeparatedText,
-            defaultFilename: "remnant-\(taxYear)-expenses.csv"
+            defaultFilename: "remnant-\(taxYear)-\(exportScope.filenameSuffix).csv"
         ) { result in
             if case .failure(let error) = result {
                 exportError = error.localizedDescription
@@ -1719,6 +1869,16 @@ private struct ExpenseRow: View {
             Text(expense.status.label)
                 .font(.caption)
                 .foregroundStyle(expense.status == .reviewed ? .green : .secondary)
+            if expense.isBillable {
+                Image(systemName: "briefcase")
+                    .foregroundStyle(.secondary)
+                    .help("Billable")
+            }
+            if ExpenseLedger.isReimbursable(expense) {
+                Image(systemName: "arrow.uturn.left.circle")
+                    .foregroundStyle(.secondary)
+                    .help("Reimbursable")
+            }
             if isMissingReceipt {
                 Image(systemName: "doc.badge.clock")
                     .foregroundStyle(.secondary)
