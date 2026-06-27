@@ -82,6 +82,33 @@ enum ExpenseImportMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum BusinessDimensionKind: String, Codable, CaseIterable, Identifiable {
+    case account
+    case vendor
+    case client
+    case project
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .account: "Account"
+        case .vendor: "Vendor"
+        case .client: "Client"
+        case .project: "Project"
+        }
+    }
+
+    var pluralLabel: String {
+        switch self {
+        case .account: "Accounts"
+        case .vendor: "Vendors"
+        case .client: "Clients"
+        case .project: "Projects"
+        }
+    }
+}
+
 @Model
 final class Expense {
     var id: UUID = UUID()
@@ -93,6 +120,9 @@ final class Expense {
     var note: String = ""
     var paymentAccount: String = ""
     var paymentMethod: String = ""
+    var vendorName: String = ""
+    var clientName: String = ""
+    var projectName: String = ""
     var taxYear: Int = Calendar.current.component(.year, from: Date())
     var status: ExpenseStatus = ExpenseStatus.draft
     var source: ExpenseSource = ExpenseSource.manual
@@ -112,6 +142,9 @@ final class Expense {
         note: String = "",
         paymentAccount: String = "",
         paymentMethod: String = "",
+        vendorName: String? = nil,
+        clientName: String = "",
+        projectName: String = "",
         taxYear: Int? = nil,
         status: ExpenseStatus = .draft,
         source: ExpenseSource = .manual,
@@ -129,6 +162,9 @@ final class Expense {
         self.note = note
         self.paymentAccount = paymentAccount
         self.paymentMethod = paymentMethod
+        self.vendorName = vendorName ?? merchant
+        self.clientName = clientName
+        self.projectName = projectName
         self.taxYear = taxYear ?? Calendar.current.component(.year, from: date)
         self.status = status
         self.source = source
@@ -227,6 +263,34 @@ final class ExpenseCategory {
         ("Postage & Shipping", "Other business expense", "shippingbox", "B45309"),
         ("Uncategorized", "Needs review", "questionmark.folder", "6B7280")
     ]
+}
+
+@Model
+final class BusinessDimension {
+    var id: UUID = UUID()
+    var kind: BusinessDimensionKind = BusinessDimensionKind.account
+    var name: String = ""
+    var note: String = ""
+    var isArchived: Bool = false
+    var sortOrder: Int = 0
+    var createdAt: Date = Date()
+
+    init(
+        kind: BusinessDimensionKind,
+        name: String,
+        note: String = "",
+        isArchived: Bool = false,
+        sortOrder: Int = 0,
+        createdAt: Date = Date()
+    ) {
+        self.id = UUID()
+        self.kind = kind
+        self.name = name
+        self.note = note
+        self.isArchived = isArchived
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+    }
 }
 
 @Model

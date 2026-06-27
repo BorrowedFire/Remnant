@@ -413,21 +413,39 @@ struct ExpenseListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
     private var expenses: [Expense]
+    @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
+    private var dimensions: [BusinessDimension]
 
     @State private var searchText = ""
     @State private var reviewFilter = ExpenseReviewFilter.needsReview
+    @State private var dimensionFilterKind: BusinessDimensionKind?
+    @State private var dimensionFilterValue = ""
     @State private var isShowingForm = false
     @State private var editingExpense: Expense?
     @State private var selectedExpenseIDs = Set<UUID>()
 
     private var filteredExpenses: [Expense] {
         let reviewFiltered = expenses.filter { reviewFilter.includes($0, allExpenses: expenses) }
+        let dimensionFiltered: [Expense]
+        if let dimensionFilterKind, !dimensionFilterValue.isEmpty {
+            dimensionFiltered = ExpenseLedger.expenses(
+                reviewFiltered,
+                matching: dimensionFilterKind,
+                value: dimensionFilterValue
+            )
+        } else {
+            dimensionFiltered = reviewFiltered
+        }
+
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return reviewFiltered }
-        return reviewFiltered.filter { expense in
+        guard !query.isEmpty else { return dimensionFiltered }
+        return dimensionFiltered.filter { expense in
             expense.merchant.lowercased().contains(query)
                 || expense.note.lowercased().contains(query)
                 || (expense.categoryName ?? "").lowercased().contains(query)
+                || BusinessDimensionKind.allCases.contains { kind in
+                    ExpenseLedger.dimensionValue(for: expense, kind: kind).lowercased().contains(query)
+                }
         }
     }
 
@@ -445,6 +463,34 @@ struct ExpenseListView: View {
                 }
             }
             .pickerStyle(.segmented)
+
+            HStack(spacing: Spacing.md) {
+                Picker("Dimension", selection: $dimensionFilterKind) {
+                    Text("All Dimensions").tag(Optional<BusinessDimensionKind>.none)
+                    ForEach(BusinessDimensionKind.allCases) { kind in
+                        Text(kind.label).tag(Optional(kind))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 190)
+                .onChange(of: dimensionFilterKind) { _, _ in
+                    dimensionFilterValue = ""
+                    selectedExpenseIDs.removeAll()
+                }
+
+                Picker("Value", selection: $dimensionFilterValue) {
+                    Text("Any").tag("")
+                    ForEach(dimensionFilterValues, id: \.self) { value in
+                        Text(value).tag(value)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 220)
+                .disabled(dimensionFilterKind == nil || dimensionFilterValues.isEmpty)
+                .onChange(of: dimensionFilterValue) { _, _ in
+                    selectedExpenseIDs.removeAll()
+                }
+            }
 
             if filteredExpenses.isEmpty {
                 emptyState("No matching expenses", "Add a manual expense or import a local CSV.")
@@ -521,6 +567,22 @@ struct ExpenseListView: View {
             ExpenseFormView(expense: expense)
                 .frame(width: 560)
         }
+    }
+
+    private var dimensionFilterValues: [String] {
+        guard let dimensionFilterKind else { return [] }
+        var values = Set<String>()
+        for dimension in dimensions where dimension.kind == dimensionFilterKind && !dimension.isArchived {
+            if let name = normalizedDisplayValue(dimension.name) {
+                values.insert(name)
+            }
+        }
+        for expense in expenses {
+            if let value = normalizedDisplayValue(ExpenseLedger.dimensionValue(for: expense, kind: dimensionFilterKind)) {
+                values.insert(value)
+            }
+        }
+        return values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private func statusButton(
@@ -604,6 +666,8 @@ struct ExpenseFormView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\ExpenseCategory.sortOrder)])
     private var categories: [ExpenseCategory]
+    @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
+    private var dimensions: [BusinessDimension]
 
     private let expense: Expense?
 
@@ -614,6 +678,9 @@ struct ExpenseFormView: View {
     @State private var status = ExpenseStatus.draft
     @State private var paymentAccount = ""
     @State private var paymentMethod = ""
+    @State private var vendorName = ""
+    @State private var clientName = ""
+    @State private var projectName = ""
     @State private var note = ""
     @State private var receiptFilename = ""
     @State private var receiptURL: URL?
@@ -629,6 +696,9 @@ struct ExpenseFormView: View {
         _status = State(initialValue: expense?.status ?? .draft)
         _paymentAccount = State(initialValue: expense?.paymentAccount ?? "")
         _paymentMethod = State(initialValue: expense?.paymentMethod ?? "")
+        _vendorName = State(initialValue: expense?.vendorName ?? "")
+        _clientName = State(initialValue: expense?.clientName ?? "")
+        _projectName = State(initialValue: expense?.projectName ?? "")
         _note = State(initialValue: expense?.note ?? "")
         _receiptFilename = State(initialValue: expense?.receiptFilename ?? "")
     }
@@ -652,7 +722,10 @@ struct ExpenseFormView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                TextField("Payment Account", text: $paymentAccount)
+                dimensionPicker("Account", kind: .account, selection: $paymentAccount, emptyLabel: "None")
+                dimensionPicker("Vendor", kind: .vendor, selection: $vendorName, emptyLabel: "Use merchant")
+                dimensionPicker("Client", kind: .client, selection: $clientName, emptyLabel: "None")
+                dimensionPicker("Project", kind: .project, selection: $projectName, emptyLabel: "None")
                 TextField("Payment Method", text: $paymentMethod)
                 HStack {
                     TextField("Receipt Reference", text: $receiptFilename)
@@ -696,6 +769,34 @@ struct ExpenseFormView: View {
     private var categoryNames: [String] {
         let names = categories.map(\.name)
         return names.isEmpty ? ["Uncategorized"] : names
+    }
+
+    @ViewBuilder
+    private func dimensionPicker(
+        _ title: String,
+        kind: BusinessDimensionKind,
+        selection: Binding<String>,
+        emptyLabel: String
+    ) -> some View {
+        Picker(title, selection: selection) {
+            Text(emptyLabel).tag("")
+            ForEach(dimensionNames(for: kind, currentValue: selection.wrappedValue), id: \.self) { name in
+                Text(name).tag(name)
+            }
+        }
+    }
+
+    private func dimensionNames(for kind: BusinessDimensionKind, currentValue: String) -> [String] {
+        var names = Set<String>()
+        for dimension in dimensions where dimension.kind == kind && !dimension.isArchived {
+            if let name = normalizedDisplayValue(dimension.name) {
+                names.insert(name)
+            }
+        }
+        if let current = normalizedDisplayValue(currentValue) {
+            names.insert(current)
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var formTitle: String {
@@ -755,8 +856,11 @@ struct ExpenseFormView: View {
         target.categoryName = categoryName
         target.status = status
         target.note = note
-        target.paymentAccount = paymentAccount
+        target.paymentAccount = paymentAccount.trimmingCharacters(in: .whitespacesAndNewlines)
         target.paymentMethod = paymentMethod
+        target.vendorName = vendorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.clientName = clientName.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.projectName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
         target.taxYear = Calendar.current.component(.year, from: date)
         target.receiptFilename = receiptFilename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : receiptFilename
         target.updatedAt = Date()
@@ -1326,9 +1430,14 @@ struct ExpenseSettingsView: View {
     private var categories: [ExpenseCategory]
     @Query(sort: [SortDescriptor(\VendorRule.merchantPattern)])
     private var vendorRules: [VendorRule]
+    @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
+    private var dimensions: [BusinessDimension]
 
     @State private var merchantPattern = ""
     @State private var selectedCategory = "Uncategorized"
+    @State private var newDimensionKind = BusinessDimensionKind.account
+    @State private var newDimensionName = ""
+    @State private var newDimensionNote = ""
 
     var body: some View {
         ScrollView {
@@ -1359,6 +1468,76 @@ struct ExpenseSettingsView: View {
                             }
                         }
                         .frame(minHeight: 180)
+                    }
+                }
+                .padding(14)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
+
+                VStack(alignment: .leading, spacing: Spacing.md) {
+                    Text("Reporting Dimensions")
+                        .font(.headline)
+
+                    HStack(spacing: Spacing.md) {
+                        Picker("Type", selection: $newDimensionKind) {
+                            ForEach(BusinessDimensionKind.allCases) { kind in
+                                Text(kind.label).tag(kind)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 140)
+
+                        TextField("Name", text: $newDimensionName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 180)
+
+                        TextField("Note", text: $newDimensionNote)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 160)
+
+                        Button {
+                            addDimension()
+                        } label: {
+                            Label("Add", systemImage: "plus")
+                        }
+                        .disabled(normalizedDimensionName.isEmpty)
+                    }
+
+                    if dimensions.isEmpty {
+                        Text("No reporting dimensions yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        List {
+                            ForEach(BusinessDimensionKind.allCases) { kind in
+                                let rows = dimensionsForKind(kind)
+                                if !rows.isEmpty {
+                                    Section(kind.pluralLabel) {
+                                        ForEach(rows) { dimension in
+                                            HStack {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(dimension.name)
+                                                        .font(.body.weight(.medium))
+                                                    if !dimension.note.isEmpty {
+                                                        Text(dimension.note)
+                                                            .font(.caption)
+                                                            .foregroundStyle(.secondary)
+                                                    }
+                                                }
+                                                Spacer()
+                                                Button(role: .destructive) {
+                                                    deleteDimension(dimension)
+                                                } label: {
+                                                    Label("Delete", systemImage: "trash")
+                                                }
+                                                .labelStyle(.iconOnly)
+                                                .buttonStyle(.borderless)
+                                                .help("Delete dimension")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .frame(minHeight: 190)
                     }
                 }
                 .padding(14)
@@ -1452,6 +1631,46 @@ struct ExpenseSettingsView: View {
 
     private var normalizedPattern: String {
         merchantPattern.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var normalizedDimensionName: String {
+        newDimensionName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func dimensionsForKind(_ kind: BusinessDimensionKind) -> [BusinessDimension] {
+        dimensions.filter { $0.kind == kind && !$0.isArchived }
+    }
+
+    private func addDimension() {
+        guard !normalizedDimensionName.isEmpty else { return }
+        let existing = dimensions.first {
+            $0.kind == newDimensionKind
+                && $0.name.compare(normalizedDimensionName, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+
+        if let existing {
+            existing.note = newDimensionNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            existing.isArchived = false
+        } else {
+            let nextSortOrder = ((dimensions.map(\.sortOrder).max() ?? -1) + 1)
+            modelContext.insert(
+                BusinessDimension(
+                    kind: newDimensionKind,
+                    name: normalizedDimensionName,
+                    note: newDimensionNote.trimmingCharacters(in: .whitespacesAndNewlines),
+                    sortOrder: nextSortOrder
+                )
+            )
+        }
+
+        newDimensionName = ""
+        newDimensionNote = ""
+        try? modelContext.save()
+    }
+
+    private func deleteDimension(_ dimension: BusinessDimension) {
+        modelContext.delete(dimension)
+        try? modelContext.save()
     }
 
     private func addRule() {
@@ -1554,4 +1773,9 @@ private func metric(_ title: String, _ value: String) -> some View {
 private func emptyState(_ title: String, _ subtitle: String) -> some View {
     ContentUnavailableView(title, systemImage: "tray", description: Text(subtitle))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+private func normalizedDisplayValue(_ value: String?) -> String? {
+    let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    return trimmed.isEmpty ? nil : trimmed
 }

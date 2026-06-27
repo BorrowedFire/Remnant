@@ -91,6 +91,10 @@ enum ExpenseLedger {
             "Currency",
             "Category",
             "Tax Bucket",
+            "Account",
+            "Vendor",
+            "Client",
+            "Project",
             "Status",
             "Source",
             "Payment Account",
@@ -110,6 +114,10 @@ enum ExpenseLedger {
                     expense.currencyCode,
                     expense.categoryName ?? "",
                     taxBucket(for: expense.categoryName, categories: categories),
+                    dimensionValue(for: expense, kind: .account),
+                    dimensionValue(for: expense, kind: .vendor),
+                    dimensionValue(for: expense, kind: .client),
+                    dimensionValue(for: expense, kind: .project),
                     expense.status.rawValue,
                     expense.source.rawValue,
                     expense.paymentAccount,
@@ -138,6 +146,32 @@ enum ExpenseLedger {
         }
 
         return categoryName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    static func dimensionValue(for expense: Expense, kind: BusinessDimensionKind) -> String {
+        switch kind {
+        case .account:
+            normalizedDisplayValue(expense.paymentAccount) ?? ""
+        case .vendor:
+            normalizedDisplayValue(expense.vendorName) ?? normalizedDisplayValue(expense.merchant) ?? ""
+        case .client:
+            normalizedDisplayValue(expense.clientName) ?? ""
+        case .project:
+            normalizedDisplayValue(expense.projectName) ?? ""
+        }
+    }
+
+    static func expenses(
+        _ expenses: [Expense],
+        matching kind: BusinessDimensionKind,
+        value: String
+    ) -> [Expense] {
+        let normalizedValue = normalized(value)
+        guard !normalizedValue.isEmpty else { return expenses }
+
+        return expenses.filter { expense in
+            normalized(dimensionValue(for: expense, kind: kind)) == normalizedValue
+        }
     }
 
     static func monthInterval(containing date: Date) -> DateInterval {
