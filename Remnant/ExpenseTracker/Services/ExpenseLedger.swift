@@ -5,19 +5,29 @@ import SwiftData
 enum ExpenseLedger {
     static func seedDefaultCategoriesIfNeeded(context: ModelContext) throws {
         let categories = try context.fetch(FetchDescriptor<ExpenseCategory>())
-        guard categories.isEmpty else { return }
+        var existingNames = Set(categories.map { normalized($0.name) })
+        var nextSortOrder = (categories.map(\.sortOrder).max() ?? -1) + 1
+        var insertedCount = 0
 
         for (index, definition) in ExpenseCategory.defaultCategoryDefinitions.enumerated() {
+            let normalizedName = normalized(definition.name)
+            guard !existingNames.contains(normalizedName) else { continue }
+
             context.insert(ExpenseCategory(
                 name: definition.name,
                 taxBucket: definition.taxBucket,
                 icon: definition.icon,
                 colorHex: definition.colorHex,
-                sortOrder: index
+                sortOrder: categories.isEmpty ? index : nextSortOrder
             ))
+            existingNames.insert(normalizedName)
+            insertedCount += 1
+            nextSortOrder += 1
         }
 
-        try context.save()
+        if insertedCount > 0 {
+            try context.save()
+        }
     }
 
     static func totalSpent(in expenses: [Expense], for interval: DateInterval) -> Decimal {
@@ -73,13 +83,14 @@ enum ExpenseLedger {
         }
     }
 
-    static func exportCSV(expenses: [Expense]) -> String {
+    static func exportCSV(expenses: [Expense], categories: [ExpenseCategory] = []) -> String {
         let header = [
             "Date",
             "Merchant",
             "Amount",
             "Currency",
             "Category",
+            "Tax Bucket",
             "Status",
             "Source",
             "Payment Account",
@@ -98,6 +109,7 @@ enum ExpenseLedger {
                     "\(expense.amount)",
                     expense.currencyCode,
                     expense.categoryName ?? "",
+                    taxBucket(for: expense.categoryName, categories: categories),
                     expense.status.rawValue,
                     expense.source.rawValue,
                     expense.paymentAccount,
@@ -109,6 +121,23 @@ enum ExpenseLedger {
             }
 
         return ([header.map(csvCell).joined(separator: ",")] + rows).joined(separator: "\n")
+    }
+
+    static func taxBucket(for categoryName: String?, categories: [ExpenseCategory]) -> String {
+        guard let normalizedCategory = normalizedOptional(categoryName) else {
+            return "Needs review"
+        }
+
+        if let category = categories.first(where: { normalized($0.name) == normalizedCategory }),
+           let taxBucket = normalizedDisplayValue(category.taxBucket) {
+            return taxBucket
+        }
+
+        if normalizedCategory == normalized("Uncategorized") {
+            return "Needs review"
+        }
+
+        return categoryName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     static func monthInterval(containing date: Date) -> DateInterval {
@@ -154,5 +183,10 @@ enum ExpenseLedger {
 
     private static func normalized(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedDisplayValue(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

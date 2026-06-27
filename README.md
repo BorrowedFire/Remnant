@@ -16,8 +16,9 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Receipt dedupe by content hash
 - Receipt matching panel with local suggestions for attaching inbox receipts to expenses that are missing receipts
 - Single and batch draft-expense creation from downloaded inbox receipts that are not already in the ledger
+- Developer-oriented category presets with accountant-facing tax/reporting buckets
 - Local vendor rules for categorizing recurring merchants without connecting to a service
-- Tax-year report view with formula-safe CSV preview and file export
+- Tax-year report view with formula-safe CSV preview and file export including tax buckets
 - Settings view for local vendor rules and privacy guarantees
 
 ## Privacy Model

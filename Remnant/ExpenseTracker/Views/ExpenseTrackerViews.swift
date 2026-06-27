@@ -1252,6 +1252,8 @@ private struct ReceiptReconciliationPanel: View {
 struct ReportsView: View {
     @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
     private var expenses: [Expense]
+    @Query(sort: [SortDescriptor(\ExpenseCategory.sortOrder)])
+    private var categories: [ExpenseCategory]
 
     @State private var taxYear = Calendar.current.component(.year, from: Date())
     @State private var isExportingCSV = false
@@ -1260,6 +1262,10 @@ struct ReportsView: View {
     private var expensesForYear: [Expense] {
         let interval = ExpenseLedger.yearInterval(taxYear)
         return expenses.filter { interval.contains($0.date) && $0.status != .ignored }
+    }
+
+    private var exportCSV: String {
+        ExpenseLedger.exportCSV(expenses: expensesForYear, categories: categories)
     }
 
     var body: some View {
@@ -1292,7 +1298,7 @@ struct ReportsView: View {
 
             Text("CSV Preview")
                 .font(.headline)
-            Text(ExpenseLedger.exportCSV(expenses: expensesForYear))
+            Text(exportCSV)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(12)
@@ -1301,7 +1307,7 @@ struct ReportsView: View {
         .padding(24)
         .fileExporter(
             isPresented: $isExportingCSV,
-            document: ExpenseCSVDocument(csv: ExpenseLedger.exportCSV(expenses: expensesForYear)),
+            document: ExpenseCSVDocument(csv: exportCSV),
             contentType: .commaSeparatedText,
             defaultFilename: "remnant-\(taxYear)-expenses.csv"
         ) { result in
@@ -1328,6 +1334,35 @@ struct ExpenseSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.xl) {
                 header("Settings", subtitle: "Local rules and privacy controls for expense tracking.")
+
+                VStack(alignment: .leading, spacing: Spacing.md) {
+                    Text("Categories")
+                        .font(.headline)
+
+                    if categories.isEmpty {
+                        Text("No categories yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        List(categories) { category in
+                            HStack(spacing: Spacing.md) {
+                                Image(systemName: category.icon)
+                                    .foregroundStyle(Color(hex: category.colorHex))
+                                    .frame(width: 22)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(category.name)
+                                        .font(.body.weight(.medium))
+                                    Text(category.taxBucket)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                        }
+                        .frame(minHeight: 180)
+                    }
+                }
+                .padding(14)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
 
                 VStack(alignment: .leading, spacing: Spacing.md) {
                     Text("Vendor Rules")

@@ -206,14 +206,25 @@ final class ExpenseCategory {
     }
 
     static let defaultCategoryDefinitions: [(name: String, taxBucket: String, icon: String, colorHex: String)] = [
-        ("Software", "Software and subscriptions", "desktopcomputer", "3B82F6"),
-        ("Hosting", "Cloud infrastructure", "server.rack", "06B6D4"),
-        ("Contractors", "Professional services", "person.2", "8B5CF6"),
-        ("Office", "Office supplies", "tray.full", "F59E0B"),
-        ("Marketing", "Advertising and marketing", "megaphone", "EF4444"),
-        ("Travel", "Business travel", "airplane", "10B981"),
-        ("Meals", "Business meals", "fork.knife", "F97316"),
-        ("Taxes", "Taxes and fees", "building.columns", "64748B"),
+        ("Software", "Office expense", "desktopcomputer", "3B82F6"),
+        ("AI Tools", "Office expense", "sparkles", "8B5CF6"),
+        ("Hosting", "Utilities", "server.rack", "06B6D4"),
+        ("Domains", "Advertising", "globe", "0EA5E9"),
+        ("Contractors", "Contract labor", "person.2", "A855F7"),
+        ("Professional Services", "Legal and professional services", "briefcase", "6366F1"),
+        ("Advertising", "Advertising", "megaphone", "EF4444"),
+        ("Fees", "Commissions and fees", "dollarsign.circle", "64748B"),
+        ("Payment Processing", "Commissions and fees", "creditcard", "475569"),
+        ("Meals", "Meals", "fork.knife", "F97316"),
+        ("Travel", "Travel", "airplane", "10B981"),
+        ("Education", "Other business expense", "book", "14B8A6"),
+        ("Hardware", "Depreciation and section 179", "display", "2563EB"),
+        ("Office Supplies", "Office expense", "tray.full", "F59E0B"),
+        ("Internet & Phone", "Utilities", "wifi", "0891B2"),
+        ("Taxes & Licenses", "Taxes and licenses", "building.columns", "6B7280"),
+        ("Insurance", "Insurance", "checkmark.shield", "059669"),
+        ("Rent & Coworking", "Rent or lease", "building.2", "92400E"),
+        ("Postage & Shipping", "Other business expense", "shippingbox", "B45309"),
         ("Uncategorized", "Needs review", "questionmark.folder", "6B7280")
     ]
 }
