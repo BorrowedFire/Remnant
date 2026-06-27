@@ -50,6 +50,22 @@ struct ExpenseLedgerTests {
         #expect(csv.contains("\"'=SUM(1,1)\""))
     }
 
+    @Test("CSV export includes tax bucket from local categories")
+    func csvExportIncludesTaxBucketFromLocalCategories() {
+        let expense = Expense(merchant: "OpenAI", amount: 20, categoryName: "AI Tools")
+        let category = ExpenseCategory(
+            name: "AI Tools",
+            taxBucket: "Office expense",
+            icon: "sparkles",
+            colorHex: "8B5CF6"
+        )
+
+        let csv = ExpenseLedger.exportCSV(expenses: [expense], categories: [category])
+
+        #expect(csv.starts(with: "\"Date\",\"Merchant\",\"Amount\",\"Currency\",\"Category\",\"Tax Bucket\""))
+        #expect(csv.contains("\"AI Tools\",\"Office expense\""))
+    }
+
     @Test("Missing receipt filtering excludes ignored expenses")
     func missingReceiptFilteringExcludesIgnoredExpenses() {
         let missing = Expense(merchant: "No Receipt", amount: 10)
@@ -93,6 +109,58 @@ struct ExpenseLedgerTests {
 
         let categories = try container.mainContext.fetch(FetchDescriptor<ExpenseCategory>())
         #expect(categories.count == ExpenseCategory.defaultCategoryDefinitions.count)
+    }
+
+    @Test("Default categories cover developer business expenses")
+    func defaultCategoriesCoverDeveloperBusinessExpenses() {
+        let names = Set(ExpenseCategory.defaultCategoryDefinitions.map { $0.name })
+        let buckets = Dictionary(
+            uniqueKeysWithValues: ExpenseCategory.defaultCategoryDefinitions.map { ($0.name, $0.taxBucket) }
+        )
+
+        #expect(names.isSuperset(of: [
+            "Software",
+            "AI Tools",
+            "Hosting",
+            "Contractors",
+            "Advertising",
+            "Fees",
+            "Meals",
+            "Travel",
+            "Education",
+            "Hardware",
+            "Office Supplies",
+            "Professional Services"
+        ]))
+        #expect(buckets["AI Tools"] == "Office expense")
+        #expect(buckets["Hosting"] == "Utilities")
+        #expect(buckets["Contractors"] == "Contract labor")
+        #expect(buckets["Fees"] == "Commissions and fees")
+    }
+
+    @Test("Default category seeding adds missing defaults without overwriting existing categories")
+    func defaultCategorySeedingAddsMissingDefaultsWithoutOverwritingExistingCategories() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let existing = ExpenseCategory(
+            name: "Software",
+            taxBucket: "Custom software bucket",
+            icon: "hammer",
+            colorHex: "111111",
+            sortOrder: 42
+        )
+        context.insert(existing)
+        try context.save()
+
+        try ExpenseLedger.seedDefaultCategoriesIfNeeded(context: context)
+
+        let categories = try context.fetch(FetchDescriptor<ExpenseCategory>())
+        let softwareRows = categories.filter { $0.name == "Software" }
+
+        #expect(categories.count == ExpenseCategory.defaultCategoryDefinitions.count)
+        #expect(softwareRows.count == 1)
+        #expect(softwareRows.first?.taxBucket == "Custom software bucket")
+        #expect(categories.contains { $0.name == "AI Tools" })
     }
 
     @Test("Expense store can use explicit 1.0 store URL")
