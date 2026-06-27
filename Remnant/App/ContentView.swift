@@ -1,46 +1,83 @@
+import SwiftData
 import SwiftUI
 
-struct ContentView: View {
-    @Environment(AppEnvironment.self) private var environment
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+enum ExpenseSection: String, CaseIterable, Hashable, Identifiable {
+    case dashboard = "Dashboard"
+    case expenses = "Expenses"
+    case imports = "Imports"
+    case reports = "Reports"
+    case settings = "Settings"
 
-    var body: some View {
-        if hasCompletedOnboarding {
-            MainTabView()
-        } else {
-            OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
+    var id: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .dashboard: "chart.bar.xaxis"
+        case .expenses: "list.bullet.rectangle"
+        case .imports: "square.and.arrow.down"
+        case .reports: "doc.text.magnifyingglass"
+        case .settings: "lock.shield"
         }
     }
 }
 
-// MARK: - Adaptive Navigation
-
-enum AppTab: Hashable {
-    case dashboard, bills, plan, history
-}
-
-struct MainTabView: View {
-    @State private var selectedTab: AppTab = .dashboard
+struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @State private var selectedSection: ExpenseSection = .dashboard
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            Tab("Dashboard", systemImage: "chart.bar.fill", value: .dashboard) {
-                DashboardView()
-            }
+        NavigationSplitView {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: Spacing.sm) {
+                    Image(systemName: "flame.fill")
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Color.blue, in: RoundedRectangle(cornerRadius: 6))
+                    Text("Remnant")
+                        .font(.headline)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
 
-            Tab("Bills", systemImage: "list.bullet.rectangle.fill", value: .bills) {
-                BillListView()
-            }
+                List(ExpenseSection.allCases, selection: $selectedSection) { section in
+                    Label(section.rawValue, systemImage: section.systemImage)
+                        .tag(section)
+                }
+                .listStyle(.sidebar)
 
-            Tab("Plan", systemImage: "target", value: .plan) {
-                PlanningView()
-            }
+                Spacer(minLength: 0)
 
-            Tab("History", systemImage: "calendar", value: .history) {
-                MonthlyView()
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Local ledger", systemImage: "lock")
+                        .font(.caption.weight(.medium))
+                    Text("Borrowed Fire LLC")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(14)
             }
+            .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 240)
+        } detail: {
+            detailView
         }
-        .tabViewStyle(.sidebarAdaptable)
-        .tint(Color.Theme.accent)
+        .task {
+            try? ExpenseLedger.seedDefaultCategoriesIfNeeded(context: modelContext)
+        }
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selectedSection {
+        case .dashboard:
+            ExpenseDashboardView()
+        case .expenses:
+            ExpenseListView()
+        case .imports:
+            ImportCenterView()
+        case .reports:
+            ReportsView()
+        case .settings:
+            ExpenseSettingsView()
+        }
     }
 }

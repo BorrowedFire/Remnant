@@ -3,17 +3,14 @@ name: Remnant
 options:
   bundleIdPrefix: com.borrowedfire.remnant
   deploymentTarget:
-    iOS: 26.0
+    macOS: 26.0
   createIntermediateGroups: true
   generateEmptyDirectories: false
 
 settings:
   base:
     SWIFT_VERSION: 6.0
-    IPHONEOS_DEPLOYMENT_TARGET: 26.0
-
-fileGroups:
-  - Remnant.storekit
+    MACOSX_DEPLOYMENT_TARGET: 26.0
 
 schemes:
   Remnant:
@@ -22,7 +19,6 @@ schemes:
         Remnant: all
     run:
       config: Debug
-      storeKitConfiguration: Remnant.storekit
     test:
       config: Debug
       targets:
@@ -37,38 +33,31 @@ schemes:
 targets:
   Remnant:
     type: application
-    platform: iOS
+    platform: macOS
     sources:
-      - path: Remnant
-        excludes:
-          - "**/*.md"
-          - "**/Info.plist"
+      - path: Remnant/App/RemnantApp.swift
+      - path: Remnant/App/ContentView.swift
+      - path: Remnant/ExpenseTracker
+      - path: Remnant/Resources
+      - path: Remnant/Extensions
+      - path: Remnant/Assets.xcassets
+      - path: Remnant/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.borrowedfire.remnant
         INFOPLIST_FILE: Remnant/Info.plist
         PRODUCT_NAME: Remnant
-        TARGETED_DEVICE_FAMILY: "1,2"
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: 1
-        ENABLE_PREVIEWS: YES
-        DEVELOPMENT_ASSET_PATHS: ""
-        CODE_SIGN_ENTITLEMENTS: Remnant/Remnant.entitlements
-      configs:
-        Debug:
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
-        Release:
-          SWIFT_OPTIMIZATION_LEVEL: -O
 
   RemnantTests:
     type: bundle.unit-test
-    platform: iOS
+    platform: macOS
     sources:
-      - RemnantTests
+      - path: RemnantTests
     dependencies:
       - target: Remnant
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.borrowedfire.remnant.tests
-        TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES

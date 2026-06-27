@@ -1,53 +1,102 @@
-import SwiftUI
+import AppKit
 import SwiftData
-import UserNotifications
+import SwiftUI
 
 @main
-struct RemnantApp: App {
-    let container: ModelContainer
-    @State private var environment: AppEnvironment
+enum RemnantMain {
+    @MainActor private static var delegate: RemnantAppDelegate?
 
-    init() {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
+        let appDelegate = RemnantAppDelegate()
+        delegate = appDelegate
+        app.delegate = appDelegate
+        app.setActivationPolicy(.regular)
+        appDelegate.showMainWindow()
+
+        if CommandLine.arguments.contains("--verify-window") {
+            let visibleWindowCount = app.windows.filter(\.isVisible).count
+            if visibleWindowCount < 1 {
+                fputs("Remnant did not create a visible main window.\n", stderr)
+                exit(1)
+            }
+            fputs("Remnant window verified: \(visibleWindowCount)\n", stdout)
+            exit(0)
+        }
+
+        app.run()
+    }
+}
+
+@MainActor
+final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
+    private let container: ModelContainer
+    private var mainWindow: NSWindow?
+
+    override init() {
         let schema = Schema([
-            Account.self, Category.self, IncomeSource.self,
-            IncomeEntry.self, Bill.self, Payment.self
+            Expense.self,
+            ReceiptAttachment.self,
+            ExpenseCategory.self,
+            ImportBatch.self,
+            VendorRule.self
         ])
 
-        let container: ModelContainer
         do {
-            let config = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .private("iCloud.com.borrowedfire.remnant")
-            )
-            container = try ModelContainer(for: schema, configurations: [config])
+            container = try ModelContainer(for: schema)
         } catch {
-            // Fallback to local-only store (simulator or missing CloudKit entitlement)
-            do {
-                let localConfig = ModelConfiguration(schema: schema)
-                container = try ModelContainer(for: schema, configurations: [localConfig])
-            } catch {
-                fatalError("Failed to create ModelContainer: \(error)")
-            }
+            fatalError("Failed to create local expense store: \(error)")
         }
 
-        self.container = container
-        self.environment = AppEnvironment.production(modelContext: container.mainContext)
+        super.init()
     }
 
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environment(environment)
-                .modelContainer(container)
-                .preferredColorScheme(.dark)
-                .task {
-                    try? environment.categoryService.seedDefaultsIfNeeded()
-                    await environment.subscriptionService.loadProducts()
-                    await environment.subscriptionService.refreshEntitlements()
-                    await environment.reminderService.checkAuthorizationStatus()
-                    environment.reminderService.registerCategories()
-                    UNUserNotificationCenter.current().delegate = environment.notificationActionHandler
-                }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        showMainWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
         }
+        return true
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        false
+    }
+
+    func showMainWindow() {
+        let window: NSWindow
+        if let existingWindow = mainWindow {
+            window = existingWindow
+        } else {
+            window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Remnant"
+            window.minSize = NSSize(width: 920, height: 620)
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.identifier = NSUserInterfaceItemIdentifier("main")
+            window.contentView = NSHostingView(
+                rootView: ContentView()
+                    .modelContainer(container)
+                    .frame(minWidth: 920, minHeight: 620)
+            )
+            window.center()
+            mainWindow = window
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
