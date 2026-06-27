@@ -21,6 +21,7 @@
 		A39EA7F18BFD7A1237F45CE1 /* RemnantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F9269A2BD619FC0001B3E /* RemnantTests.swift */; };
 		AC87F1A08362A4172B39FFA8 /* ExpenseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46451DD188164F8912A6E777 /* ExpenseModels.swift */; };
 		B94F324F22D87641B2F4835C /* ExpenseImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */; };
+		C04937DF6A58955D27CF3BEC /* EmailReceiptImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */; };
 		D49682679C036E7240077E76 /* ExpenseCSVDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1587FBA7D14847278B7A5A3C /* ExpenseCSVDocument.swift */; };
 		EABF89BD0F504A6C4AAB26FD /* ReceiptMetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170474F5123A7B5B7D8828D0 /* ReceiptMetadataExtractor.swift */; };
 		EB0952DBB972D58FD55D27B8 /* ReceiptMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */; };
@@ -54,6 +55,7 @@
 		6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantBackupService.swift; sourceTree = "<group>"; };
 		6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptMatcher.swift; sourceTree = "<group>"; };
 		796BF34DA056B7065C30890D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailReceiptImportService.swift; sourceTree = "<group>"; };
 		9822193F398585E988A7474B /* RemnantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RemnantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A89DF6D0FEC09B1849EBFFC3 /* ExpenseLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseLedger.swift; sourceTree = "<group>"; };
 		CD7F9269A2BD619FC0001B3E /* RemnantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantTests.swift; sourceTree = "<group>"; };
@@ -120,6 +122,7 @@
 		BE248A1D61419F28BB55E0B4 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */,
 				F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */,
 				A89DF6D0FEC09B1849EBFFC3 /* ExpenseLedger.swift */,
 				6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */,
@@ -262,6 +265,7 @@
 				193FB67F9F5F79ADBF095194 /* Date+Helpers.swift in Sources */,
 				60C2B771F3389050546DC1D9 /* Decimal+Currency.swift in Sources */,
 				FF3EED7F7C3830C590FBE9B5 /* DesignTokens.swift in Sources */,
+				C04937DF6A58955D27CF3BEC /* EmailReceiptImportService.swift in Sources */,
 				D49682679C036E7240077E76 /* ExpenseCSVDocument.swift in Sources */,
 				B94F324F22D87641B2F4835C /* ExpenseImportService.swift in Sources */,
 				65288D1F812033FF73007E69 /* ExpenseLedger.swift in Sources */,

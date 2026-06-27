@@ -311,6 +311,11 @@ final class ReceiptAttachment {
     var extractedDate: Date?
     var extractedAmount: Decimal?
     var extractionConfidence: Double = 0
+    var sourceMessageFilename: String?
+    var sourceMessageSubject: String?
+    var sourceMessageSender: String?
+    var sourceMessageDate: Date?
+    var sourceMessageID: String?
 
     init(
         expenseID: UUID? = nil,
@@ -321,7 +326,12 @@ final class ReceiptAttachment {
         extractedMerchant: String? = nil,
         extractedDate: Date? = nil,
         extractedAmount: Decimal? = nil,
-        extractionConfidence: Double = 0
+        extractionConfidence: Double = 0,
+        sourceMessageFilename: String? = nil,
+        sourceMessageSubject: String? = nil,
+        sourceMessageSender: String? = nil,
+        sourceMessageDate: Date? = nil,
+        sourceMessageID: String? = nil
     ) {
         self.id = UUID()
         self.expenseID = expenseID
@@ -333,6 +343,11 @@ final class ReceiptAttachment {
         self.extractedDate = extractedDate
         self.extractedAmount = extractedAmount
         self.extractionConfidence = extractionConfidence
+        self.sourceMessageFilename = sourceMessageFilename
+        self.sourceMessageSubject = sourceMessageSubject
+        self.sourceMessageSender = sourceMessageSender
+        self.sourceMessageDate = sourceMessageDate
+        self.sourceMessageID = sourceMessageID
     }
 }
 

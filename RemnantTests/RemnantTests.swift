@@ -781,6 +781,168 @@ struct ExpenseLedgerTests {
         #expect(attachments.count == 1)
     }
 
+    @Test("Email receipt import extracts supported attachments and source metadata")
+    func emailReceiptImportExtractsSupportedAttachmentsAndSourceMetadata() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let receiptData = Data("OpenAI receipt".utf8)
+        let emlURL = try writeTemporaryFile(
+            named: "openai-message.eml",
+            contents: emailMessage(
+                attachmentFilename: "openai.txt",
+                attachmentContentType: "text/plain",
+                attachmentBody: receiptData.base64EncodedString()
+            )
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+        #expect(summary.messageCount == 1)
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.skippedAttachmentCount == 0)
+        #expect(summary.failedFilenames.isEmpty)
+        #expect(attachments.count == 1)
+        #expect(attachment.originalFilename == "openai.txt")
+        #expect(attachment.sourceMessageFilename == "openai-message.eml")
+        #expect(attachment.sourceMessageSubject == "OpenAI receipt")
+        #expect(attachment.sourceMessageSender == "billing@example.com")
+        #expect(attachment.sourceMessageID == "<openai@example.com>")
+        #expect(attachment.sourceMessageDate != nil)
+        #expect(FileManager.default.fileExists(atPath: attachment.localPath))
+    }
+
+    @Test("Email receipt import dedupes attachments through receipt vault")
+    func emailReceiptImportDedupesAttachmentsThroughReceiptVault() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let receiptData = Data("duplicate receipt".utf8)
+        let emlURL = try writeTemporaryFile(
+            named: "duplicate-message.eml",
+            contents: emailMessage(
+                attachmentFilename: "duplicate.txt",
+                attachmentContentType: "text/plain",
+                attachmentBody: receiptData.base64EncodedString()
+            )
+        )
+
+        let first = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+        let second = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        #expect(first.importedCount == 1)
+        #expect(first.duplicateCount == 0)
+        #expect(second.importedCount == 0)
+        #expect(second.duplicateCount == 1)
+        #expect(attachments.count == 1)
+    }
+
+    @Test("Email receipt import handles multiple message files")
+    func emailReceiptImportHandlesMultipleMessageFiles() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let firstURL = try writeTemporaryFile(
+            named: "first.eml",
+            contents: emailMessage(
+                attachmentFilename: "first.txt",
+                attachmentContentType: "text/plain",
+                attachmentBody: Data("first receipt".utf8).base64EncodedString()
+            )
+        )
+        let secondURL = try writeTemporaryFile(
+            named: "second.eml",
+            contents: emailMessage(
+                attachmentFilename: "second.txt",
+                attachmentContentType: "text/plain",
+                attachmentBody: Data("second receipt".utf8).base64EncodedString()
+            )
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [firstURL, secondURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        #expect(summary.messageCount == 2)
+        #expect(summary.importedCount == 2)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.failedFilenames.isEmpty)
+        #expect(attachments.count == 2)
+    }
+
+    @Test("Email receipt import skips unsupported attachments")
+    func emailReceiptImportSkipsUnsupportedAttachments() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(
+            named: "unsupported-message.eml",
+            contents: emailMessage(
+                attachmentFilename: "installer.exe",
+                attachmentContentType: "application/octet-stream",
+                attachmentBody: Data("nope".utf8).base64EncodedString()
+            )
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        #expect(summary.importedCount == 0)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.skippedAttachmentCount == 1)
+        #expect(summary.failedFilenames.isEmpty)
+        #expect(attachments.isEmpty)
+    }
+
+    @Test("Email receipt import reports malformed messages safely")
+    func emailReceiptImportReportsMalformedMessagesSafely() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(named: "bad.eml", contents: "this is not a valid message")
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        #expect(summary.importedCount == 0)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.failedFilenames == ["bad.eml"])
+        #expect(attachments.isEmpty)
+    }
+
     @Test("Receipt vault does not relink duplicate attached receipt")
     func receiptVaultDoesNotRelinkDuplicateAttachedReceipt() throws {
         let container = try makeExpenseContainer()
@@ -1161,6 +1323,32 @@ struct ExpenseLedgerTests {
         let url = directory.appendingPathComponent(filename)
         try contents.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    private func emailMessage(
+        attachmentFilename: String,
+        attachmentContentType: String,
+        attachmentBody: String
+    ) -> String {
+        """
+        From: billing@example.com
+        Subject: OpenAI receipt
+        Date: Tue, 02 Jun 2026 10:30:00 -0400
+        Message-ID: <openai@example.com>
+        Content-Type: multipart/mixed; boundary="remnant-boundary"
+
+        --remnant-boundary
+        Content-Type: text/plain; charset="utf-8"
+
+        Attached.
+        --remnant-boundary
+        Content-Type: \(attachmentContentType); name="\(attachmentFilename)"
+        Content-Disposition: attachment; filename="\(attachmentFilename)"
+        Content-Transfer-Encoding: base64
+
+        \(attachmentBody)
+        --remnant-boundary--
+        """
     }
 
     private func makeUTCDate(year: Int, month: Int, day: Int) throws -> Date {
