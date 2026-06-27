@@ -2,9 +2,19 @@ import CryptoKit
 import Foundation
 import SwiftData
 
+enum ReceiptVaultImportStatus: Equatable {
+    case imported
+    case duplicateUnlinked
+    case duplicateLinked(expenseID: UUID)
+}
+
 struct ReceiptVaultImportResult {
     let attachment: ReceiptAttachment
-    let isDuplicate: Bool
+    let status: ReceiptVaultImportStatus
+
+    var isDuplicate: Bool {
+        status != .imported
+    }
 }
 
 struct ReceiptVaultBatchSummary {
@@ -52,8 +62,8 @@ enum ReceiptVault {
 
         if let existing {
             applyMetadataIfMissing(metadata, to: existing)
-            attachIfNeeded(existing, to: expense)
-            return ReceiptVaultImportResult(attachment: existing, isDuplicate: true)
+            let status = attachDuplicateIfSafe(existing, to: expense)
+            return ReceiptVaultImportResult(attachment: existing, status: status)
         }
 
         let directory = try vaultDirectory ?? defaultVaultDirectory()
@@ -77,10 +87,14 @@ enum ReceiptVault {
         context.insert(attachment)
         attachIfNeeded(attachment, to: expense)
 
-        return ReceiptVaultImportResult(attachment: attachment, isDuplicate: false)
+        return ReceiptVaultImportResult(attachment: attachment, status: .imported)
     }
 
     static func link(attachment: ReceiptAttachment, to expense: Expense) {
+        guard attachment.expenseID == nil || attachment.expenseID == expense.id else {
+            return
+        }
+
         attachment.expenseID = expense.id
         expense.receiptAttachmentID = attachment.id
         expense.receiptFilename = attachment.originalFilename
@@ -106,7 +120,7 @@ enum ReceiptVault {
             amount: amount,
             categoryName: VendorRuleMatcher.categoryName(for: merchant, rules: vendorRules) ?? "Uncategorized",
             status: .draft,
-            source: .gmailReview
+            source: .receiptDraft
         )
 
         context.insert(expense)
@@ -127,6 +141,30 @@ enum ReceiptVault {
             }
         }
         return createdCount
+    }
+
+    @discardableResult
+    static func unlinkAttachments(from expense: Expense, context: ModelContext) throws -> Int {
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        var changedCount = 0
+
+        for attachment in attachments where isLinked(attachment, to: expense) {
+            if attachment.expenseID != nil {
+                attachment.expenseID = nil
+                changedCount += 1
+            }
+        }
+
+        if expense.receiptAttachmentID != nil
+            || expense.receiptFilename != nil
+            || expense.receiptContentHash != nil {
+            expense.receiptAttachmentID = nil
+            expense.receiptFilename = nil
+            expense.receiptContentHash = nil
+            expense.updatedAt = Date()
+        }
+
+        return changedCount
     }
 
     static func importReceipts(
@@ -197,6 +235,39 @@ enum ReceiptVault {
     private static func attachIfNeeded(_ attachment: ReceiptAttachment, to expense: Expense?) {
         guard let expense else { return }
         link(attachment: attachment, to: expense)
+    }
+
+    private static func attachDuplicateIfSafe(
+        _ attachment: ReceiptAttachment,
+        to expense: Expense?
+    ) -> ReceiptVaultImportStatus {
+        if let linkedExpenseID = attachment.expenseID {
+            return .duplicateLinked(expenseID: linkedExpenseID)
+        }
+
+        guard let expense else {
+            return .duplicateUnlinked
+        }
+
+        link(attachment: attachment, to: expense)
+        return .duplicateUnlinked
+    }
+
+    private static func isLinked(_ attachment: ReceiptAttachment, to expense: Expense) -> Bool {
+        if let linkedExpenseID = attachment.expenseID {
+            return linkedExpenseID == expense.id
+        }
+
+        if let receiptAttachmentID = expense.receiptAttachmentID,
+           attachment.id == receiptAttachmentID {
+            return true
+        }
+        if let receiptContentHash = expense.receiptContentHash,
+           !receiptContentHash.isEmpty,
+           attachment.contentHash == receiptContentHash {
+            return true
+        }
+        return false
     }
 
     private static func applyMetadataIfMissing(_ metadata: ReceiptMetadata, to attachment: ReceiptAttachment) {

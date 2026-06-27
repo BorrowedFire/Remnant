@@ -1,8 +1,10 @@
 # Remnant
 
-Remnant is a local-first macOS expense tracker for Borrowed Fire LLC. It is being rebuilt to replace Wave for expense review, receipt collection, and accountant-ready CSV export.
+Remnant is a local-first macOS expense tracker for solo businesses. It is being rebuilt to replace lightweight hosted expense workflows with local review, receipt collection, and accountant-ready CSV export.
 
 The app does not connect to banks, Wave, Gmail, CloudKit, StoreKit, analytics, or a backend service. Imports and receipt handling happen on this Mac.
+
+Borrowed Fire LLC maintains the official app and uses it as the reference workflow, but Remnant is intended to be useful for other freelancers, indie developers, and small LLCs.
 
 ## Current Features
 
@@ -79,6 +81,16 @@ Remnant now covers the local foundation for replacing Wave expense tracking: imp
 
 Still planned: image OCR for scanned receipt files.
 
+## Contributing
+
+Issues and pull requests are welcome. Do not post real receipts, bank statements, account numbers, tax documents, or private business records in public GitHub issues or pull requests. Use synthetic examples instead.
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Security and privacy reporting](SECURITY.md)
+- [Roadmap](docs/roadmap.md)
+
 ## License
 
-Copyright 2025-2026 Borrowed Fire LLC. All rights reserved.
+Remnant is released under the [MIT License](LICENSE).
+
+Copyright 2025-2026 Borrowed Fire LLC.

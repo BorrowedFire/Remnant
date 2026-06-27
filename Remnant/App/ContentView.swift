@@ -50,7 +50,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Label("Local ledger", systemImage: "lock")
                         .font(.caption.weight(.medium))
-                    Text("Borrowed Fire LLC")
+                    Text("Data stays on this Mac")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

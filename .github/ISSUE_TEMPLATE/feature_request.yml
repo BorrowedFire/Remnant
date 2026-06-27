@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a scoped Remnant improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remnant 1.0 is local-first and expense-focused. Hosted integrations, sync, invoices, time tracking, payroll, and reconciliation need an accepted RFC before implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user workflow is blocked or painful?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Keep the proposal local-first and privacy-preserving.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Import
+        - Review Inbox
+        - Documents and OCR
+        - Categories and tax buckets
+        - Accounts, vendors, clients, or projects
+        - Backup and restore
+        - Export
+        - OSS/project maintenance
+        - Other
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require network calls, hosted sync, analytics, bank linking, or an email API connector.
+          required: true

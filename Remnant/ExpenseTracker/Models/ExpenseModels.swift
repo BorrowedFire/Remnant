@@ -12,7 +12,31 @@ enum ExpenseSource: String, Codable, CaseIterable {
     case manual
     case csvImport
     case waveImport
-    case gmailReview
+    case receiptDraft
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+
+        if rawValue == "gmailReview" {
+            self = .receiptDraft
+            return
+        }
+
+        guard let source = ExpenseSource(rawValue: rawValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown expense source: \(rawValue)"
+            )
+        }
+
+        self = source
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 enum ExpenseImportMode: String, Codable, CaseIterable, Identifiable {
