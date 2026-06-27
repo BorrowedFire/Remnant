@@ -63,6 +63,7 @@ struct ContentView: View {
             detailView
         }
         .task {
+            _ = try? RemnantBackupService.repairReceiptPaths(context: modelContext)
             try? ExpenseLedger.seedDefaultCategoriesIfNeeded(context: modelContext)
         }
     }

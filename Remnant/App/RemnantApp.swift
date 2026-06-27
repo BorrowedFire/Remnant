@@ -97,6 +97,7 @@ enum RemnantStore {
     static let configurationName = "RemnantExpenseTrackerV1"
     static let storeFilename = "RemnantExpenseTrackerV1.store"
     static let legacyDefaultStoreFilename = "default.store"
+    static let pendingRestoreDirectoryName = "PendingRestore"
 
     static var schema: Schema {
         Schema([
@@ -110,7 +111,11 @@ enum RemnantStore {
         ])
     }
 
+    @MainActor
     static func makeContainer(storeURL: URL? = nil) throws -> ModelContainer {
+        if storeURL == nil {
+            try applyPendingRestoreIfNeeded()
+        }
         let schema = schema
         let url = try storeURL ?? resolvedStoreURL()
         let configuration = ModelConfiguration(configurationName, schema: schema, url: url)
@@ -118,6 +123,7 @@ enum RemnantStore {
     }
 
     @discardableResult
+    @MainActor
     static func migrateLegacyStoreIfNeeded(from legacyStoreURL: URL, to targetStoreURL: URL) throws -> Bool {
         let fileManager = FileManager.default
         guard !fileManager.fileExists(atPath: targetStoreURL.path),
@@ -150,6 +156,73 @@ enum RemnantStore {
         try applicationSupportDirectory().appendingPathComponent(legacyDefaultStoreFilename)
     }
 
+    static func pendingRestoreDirectory() throws -> URL {
+        try remnantApplicationSupportDirectory()
+            .appendingPathComponent(pendingRestoreDirectoryName, isDirectory: true)
+    }
+
+    @discardableResult
+    @MainActor
+    static func applyPendingRestoreIfNeeded() throws -> Bool {
+        let fileManager = FileManager.default
+        let pendingRestoreDirectory = try pendingRestoreDirectory()
+        guard fileManager.fileExists(atPath: pendingRestoreDirectory.path) else {
+            return false
+        }
+
+        let pendingReport = try RemnantBackupService.validateBackup(at: pendingRestoreDirectory)
+        guard !pendingReport.hasIssues else {
+            try fileManager.removeItem(at: pendingRestoreDirectory)
+            return false
+        }
+
+        let pendingStoreURL = pendingRestoreDirectory
+            .appendingPathComponent("Store", isDirectory: true)
+            .appendingPathComponent(storeFilename)
+        guard fileManager.fileExists(atPath: pendingStoreURL.path) else {
+            try fileManager.removeItem(at: pendingRestoreDirectory)
+            return false
+        }
+
+        let targetStoreURL = try defaultStoreURL()
+        let targetVaultDirectory = try ReceiptVault.defaultVaultDirectory()
+        let safetyDirectory = try restoreSafetyDirectory()
+        try fileManager.createDirectory(at: safetyDirectory, withIntermediateDirectories: true)
+
+        let currentStoreFiles = storeFileURLs(for: targetStoreURL).filter { fileManager.fileExists(atPath: $0.path) }
+        if !currentStoreFiles.isEmpty {
+            let safetyStoreDirectory = safetyDirectory.appendingPathComponent("Store", isDirectory: true)
+            try fileManager.createDirectory(at: safetyStoreDirectory, withIntermediateDirectories: true)
+            try copyStoreFiles(
+                from: targetStoreURL,
+                to: safetyStoreDirectory.appendingPathComponent(storeFilename)
+            )
+        }
+
+        if fileManager.fileExists(atPath: targetVaultDirectory.path) {
+            try fileManager.moveItem(
+                at: targetVaultDirectory,
+                to: safetyDirectory.appendingPathComponent("Receipts", isDirectory: true)
+            )
+        }
+
+        removeStoreFiles(at: targetStoreURL)
+        try copyStoreFiles(from: pendingStoreURL, to: targetStoreURL)
+
+        let pendingReceiptsDirectory = pendingRestoreDirectory.appendingPathComponent("Receipts", isDirectory: true)
+        if fileManager.fileExists(atPath: pendingReceiptsDirectory.path) {
+            try fileManager.createDirectory(
+                at: targetVaultDirectory.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try fileManager.copyItem(at: pendingReceiptsDirectory, to: targetVaultDirectory)
+        }
+
+        try fileManager.removeItem(at: pendingRestoreDirectory)
+        return true
+    }
+
+    @MainActor
     private static func resolvedStoreURL() throws -> URL {
         let storeURL = try defaultStoreURL()
         if FileManager.default.fileExists(atPath: storeURL.path) {
@@ -177,7 +250,7 @@ enum RemnantStore {
         return applicationSupport
     }
 
-    private static func copyStoreFiles(from sourceURL: URL, to destinationURL: URL) throws {
+    static func copyStoreFiles(from sourceURL: URL, to destinationURL: URL) throws {
         for (source, destination) in storeFilePairs(from: sourceURL, to: destinationURL) {
             if FileManager.default.fileExists(atPath: source.path) {
                 try FileManager.default.copyItem(at: source, to: destination)
@@ -185,7 +258,7 @@ enum RemnantStore {
         }
     }
 
-    private static func removeStoreFiles(at storeURL: URL) {
+    static func removeStoreFiles(at storeURL: URL) {
         for url in storeFileURLs(for: storeURL) where FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.removeItem(at: url)
         }
@@ -197,11 +270,22 @@ enum RemnantStore {
         }
     }
 
-    private static func storeFileURLs(for storeURL: URL) -> [URL] {
+    static func storeFileURLs(for storeURL: URL) -> [URL] {
         [
             storeURL,
             URL(fileURLWithPath: storeURL.path + "-wal"),
             URL(fileURLWithPath: storeURL.path + "-shm")
         ]
+    }
+
+    private static func restoreSafetyDirectory() throws -> URL {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let suffix = UUID().uuidString.prefix(8)
+        return try remnantApplicationSupportDirectory()
+            .appendingPathComponent("RestoreSafetyBackups", isDirectory: true)
+            .appendingPathComponent("\(formatter.string(from: Date()))-\(suffix)", isDirectory: true)
     }
 }

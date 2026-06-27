@@ -22,6 +22,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Billable and reimbursable expense flags with follow-up filters and scoped CSV export
 - Local vendor rules for categorizing recurring merchants without connecting to a service
 - Report view with formula-safe raw expense, tax-bucket summary, and billable/reimbursable CSV exports by tax year or custom date range
+- Local backup and staged restore with receipt integrity checks
 - Settings view for local vendor rules and privacy guarantees
 
 ## Privacy Model
@@ -81,7 +82,7 @@ xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -dest
 
 ## Replacement Scope
 
-Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, and export tax-year CSV reports.
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports, and create local backups with receipt integrity checks.
 
 Still planned: image OCR for scanned receipt files.
 

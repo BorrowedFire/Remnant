@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -2209,6 +2210,11 @@ struct ExpenseSettingsView: View {
     @State private var newDimensionKind = BusinessDimensionKind.account
     @State private var newDimensionName = ""
     @State private var newDimensionNote = ""
+    @State private var backupNotice: String?
+    @State private var backupError: String?
+    @State private var integrityReport: RemnantBackupIntegrityReport?
+    @State private var restoreCandidateURL: URL?
+    @State private var isConfirmingRestore = false
 
     var body: some View {
         ScrollView {
@@ -2371,6 +2377,8 @@ struct ExpenseSettingsView: View {
                 .padding(14)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
 
+                backupSection
+
                 VStack(alignment: .leading, spacing: Spacing.md) {
                     Text("Privacy")
                         .font(.headline)
@@ -2392,7 +2400,81 @@ struct ExpenseSettingsView: View {
                     selectedCategory = categoryNames.first ?? "Uncategorized"
                 }
             }
+            .confirmationDialog(
+                "Restore Backup",
+                isPresented: $isConfirmingRestore,
+                presenting: restoreCandidateURL
+            ) { url in
+                Button("Stage Restore", role: .destructive) {
+                    stageRestore(from: url)
+                }
+            } message: { url in
+                Text("The selected backup will replace current local data the next time Remnant opens: \(url.lastPathComponent)")
+            }
         }
+    }
+
+    private var backupSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text("Backup & Integrity")
+                .font(.headline)
+
+            HStack(spacing: Spacing.md) {
+                Button {
+                    checkIntegrity()
+                } label: {
+                    Label("Check Integrity", systemImage: "checkmark.shield")
+                }
+
+                Button {
+                    createBackup()
+                } label: {
+                    Label("Create Backup", systemImage: "archivebox")
+                }
+
+                Button {
+                    chooseRestoreBackup()
+                } label: {
+                    Label("Restore Backup", systemImage: "arrow.counterclockwise")
+                }
+            }
+
+            if let integrityReport {
+                HStack(spacing: Spacing.lg) {
+                    metric("Expenses", "\(integrityReport.expenseCount)")
+                    metric("Receipts", "\(integrityReport.attachmentCount)")
+                    metric("Issues", "\(integrityReport.issues.count)")
+                }
+
+                if integrityReport.issues.isEmpty {
+                    Label("Integrity check passed", systemImage: "checkmark.circle")
+                        .foregroundStyle(.green)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(integrityReport.issues.prefix(5)) { issue in
+                            Label(issue.detail, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                        }
+                        if integrityReport.issues.count > 5 {
+                            Text("\(integrityReport.issues.count - 5) more issue(s)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if let backupNotice {
+                Text(backupNotice)
+                    .foregroundStyle(.secondary)
+            }
+            if let backupError {
+                Text(backupError)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
     }
 
     private var categoryNames: [String] {
@@ -2406,6 +2488,79 @@ struct ExpenseSettingsView: View {
 
     private var normalizedDimensionName: String {
         newDimensionName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func checkIntegrity() {
+        do {
+            integrityReport = try RemnantBackupService.integrityReport(context: modelContext)
+            backupError = nil
+            backupNotice = nil
+        } catch {
+            backupError = error.localizedDescription
+        }
+    }
+
+    private func createBackup() {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.nameFieldStringValue = "remnant-backup-\(backupDateFormatter.string(from: Date())).\(RemnantBackupService.backupExtension)"
+        panel.title = "Create Remnant Backup"
+
+        guard panel.runModal() == .OK,
+              let url = panel.url else { return }
+
+        do {
+            let report = try RemnantBackupService.createBackup(
+                at: url,
+                context: modelContext,
+                allowOverwrite: true
+            )
+            integrityReport = report
+            backupNotice = "Backup created at \(url.lastPathComponent)."
+            backupError = nil
+        } catch {
+            backupError = error.localizedDescription
+        }
+    }
+
+    private func chooseRestoreBackup() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.title = "Choose Remnant Backup"
+
+        guard panel.runModal() == .OK,
+              let url = panel.url else { return }
+
+        restoreCandidateURL = url
+        isConfirmingRestore = true
+    }
+
+    private func stageRestore(from url: URL) {
+        do {
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if didStartAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            let report = try RemnantBackupService.stageRestore(from: url, allowOverwrite: true)
+            integrityReport = report
+            backupNotice = "Restore staged. Restart Remnant to load \(url.lastPathComponent)."
+            backupError = nil
+        } catch {
+            backupError = error.localizedDescription
+        }
+    }
+
+    private var backupDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd-HHmm"
+        return formatter
     }
 
     private func dimensionsForKind(_ kind: BusinessDimensionKind) -> [BusinessDimension] {
