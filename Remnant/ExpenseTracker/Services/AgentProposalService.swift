@@ -50,6 +50,7 @@ enum AgentProposalService {
         }
         if changedCount > 0 {
             try context.save()
+            _ = try? AgentSnapshotService.writeSnapshot(context: context)
         }
         return changedCount
     }
@@ -339,7 +340,10 @@ enum AgentProposalService {
         if before.id != current.id {
             throw AgentWorkspaceError.validationFailed("Proposal beforeJSON references a different expense.")
         }
-        if let updatedAt = before.updatedAt, current.updatedAt != updatedAt {
+        guard let updatedAt = before.updatedAt else {
+            throw AgentWorkspaceError.validationFailed("Expense update proposals must include beforeJSON.updatedAt for stale-change validation.")
+        }
+        if current.updatedAt != updatedAt {
             throw AgentWorkspaceError.staleProposal("Expense changed after this proposal was created.")
         }
         if let categoryName = before.categoryName, categoryName != current.categoryName {

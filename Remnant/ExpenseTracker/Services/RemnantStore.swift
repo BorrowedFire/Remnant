@@ -33,6 +33,12 @@ enum RemnantStore {
         return try ModelContainer(for: schema, configurations: [configuration])
     }
 
+    @MainActor
+    static func saveLedgerMutation(context: ModelContext) throws {
+        try context.save()
+        _ = try? AgentSnapshotService.writeSnapshot(context: context)
+    }
+
     @discardableResult
     @MainActor
     static func migrateLegacyStoreIfNeeded(from legacyStoreURL: URL, to targetStoreURL: URL) throws -> Bool {

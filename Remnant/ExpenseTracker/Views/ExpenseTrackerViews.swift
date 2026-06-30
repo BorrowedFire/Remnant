@@ -825,6 +825,7 @@ struct ExpenseReviewInboxView: View {
     @State private var selectedProposal: AgentProposal?
     @State private var proposalNotice: String?
     @State private var proposalError: String?
+    private let proposalSyncTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     init(issueFilter: Binding<ExpenseReviewInboxFilter>) {
         _issueFilter = issueFilter
@@ -996,7 +997,10 @@ struct ExpenseReviewInboxView: View {
             .frame(width: 680, height: 620)
         }
         .task {
-            _ = try? AgentProposalService.syncProposalFiles(context: modelContext)
+            syncAgentProposals()
+        }
+        .onReceive(proposalSyncTimer) { _ in
+            syncAgentProposals()
         }
     }
 
@@ -1037,8 +1041,7 @@ struct ExpenseReviewInboxView: View {
     private func updateStatus(_ status: ExpenseStatus, for expenses: [Expense]) {
         guard !expenses.isEmpty else { return }
         _ = ExpenseLedger.updateStatus(of: expenses, to: status)
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func updateCategory(_ category: String, for expenses: [Expense]) {
@@ -1048,8 +1051,7 @@ struct ExpenseReviewInboxView: View {
             expense.categoryName = category
             expense.updatedAt = now
         }
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func applyProposal(_ proposal: AgentProposal) {
@@ -1072,6 +1074,14 @@ struct ExpenseReviewInboxView: View {
         } catch {
             proposalError = error.localizedDescription
             proposalNotice = nil
+        }
+    }
+
+    private func syncAgentProposals() {
+        do {
+            _ = try AgentProposalService.syncProposalFiles(context: modelContext)
+        } catch {
+            proposalError = error.localizedDescription
         }
     }
 }
@@ -1640,7 +1650,7 @@ struct ExpenseListView: View {
     private func updateStatus(_ status: ExpenseStatus, for expenses: [Expense]) {
         guard !expenses.isEmpty else { return }
         _ = ExpenseLedger.updateStatus(of: expenses, to: status)
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func updateFollowUp(for expenses: [Expense], update: (Expense) -> Void) {
@@ -1650,13 +1660,12 @@ struct ExpenseListView: View {
             update(expense)
             expense.updatedAt = now
         }
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func ignoreExpense(_ expense: Expense) {
         _ = ExpenseLedger.updateStatus(of: [expense], to: .ignored)
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 }
 
@@ -2014,7 +2023,7 @@ struct ExpenseFormView: View {
         if expense == nil {
             modelContext.insert(target)
         }
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         dismiss()
     }
 
@@ -2586,7 +2595,7 @@ struct ImportCenterView: View {
             modelContext.insert(candidate.expense)
         }
 
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         importSummary = nil
         importNotice = "Imported \(summary.accepted.count) expenses from \(summary.sourceName)."
     }
@@ -2641,7 +2650,7 @@ struct ImportCenterView: View {
         do {
             let urls = try result.get()
             let summary = ReceiptVault.importReceipts(at: urls, context: modelContext)
-            try modelContext.save()
+            try RemnantStore.saveLedgerMutation(context: modelContext)
 
             var parts = ["Added \(summary.importedCount) receipts"]
             if summary.duplicateCount > 0 {
@@ -2663,7 +2672,7 @@ struct ImportCenterView: View {
         do {
             let urls = try result.get()
             let summary = EmailReceiptImportService.importEMLFiles(at: urls, context: modelContext)
-            try modelContext.save()
+            try RemnantStore.saveLedgerMutation(context: modelContext)
 
             var parts = ["Imported \(summary.importedCount) email receipts"]
             if summary.duplicateCount > 0 {
@@ -2991,7 +3000,7 @@ private struct ReceiptReconciliationPanel: View {
         }
 
         ReceiptVault.link(attachment: receipt, to: expense)
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         actionNotice = nil
         self.selectedReceiptID = nil
         self.selectedExpenseID = nil
@@ -2999,7 +3008,7 @@ private struct ReceiptReconciliationPanel: View {
 
     private func attach(_ suggestion: ReceiptMatchSuggestion) {
         ReceiptVault.link(attachment: suggestion.receipt, to: suggestion.expense)
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         actionNotice = nil
         self.selectedReceiptID = nil
         self.selectedExpenseID = nil
@@ -3008,7 +3017,7 @@ private struct ReceiptReconciliationPanel: View {
     private func createExpenseFromSelection() {
         guard let receipt = selectedReceipt else { return }
         guard ReceiptVault.createDraftExpense(from: receipt, context: modelContext, vendorRules: vendorRules) != nil else { return }
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         actionNotice = "Created 1 draft expense."
         self.selectedReceiptID = nil
         self.selectedExpenseID = nil
@@ -3021,7 +3030,7 @@ private struct ReceiptReconciliationPanel: View {
             vendorRules: vendorRules
         )
         guard createdCount > 0 else { return }
-        try? modelContext.save()
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
         actionNotice = "Created \(createdCount) draft expenses."
         self.selectedReceiptID = nil
         self.selectedExpenseID = nil
@@ -3829,14 +3838,12 @@ struct ExpenseSettingsView: View {
 
         newDimensionName = ""
         newDimensionNote = ""
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func deleteDimension(_ dimension: BusinessDimension) {
         dimension.isArchived = true
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func addRule() {
@@ -3862,14 +3869,12 @@ struct ExpenseSettingsView: View {
         }
 
         merchantPattern = ""
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 
     private func deleteRule(_ rule: VendorRule) {
         rule.isArchived = true
-        try? modelContext.save()
-        _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
+        try? RemnantStore.saveLedgerMutation(context: modelContext)
     }
 }
 
