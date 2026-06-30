@@ -84,6 +84,7 @@ enum ExpenseImportMode: String, Codable, CaseIterable, Identifiable {
 
 enum BusinessDimensionKind: String, Codable, CaseIterable, Identifiable {
     case account
+    case paymentMethod
     case vendor
     case client
     case project
@@ -93,6 +94,7 @@ enum BusinessDimensionKind: String, Codable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .account: "Account"
+        case .paymentMethod: "Payment Method"
         case .vendor: "Vendor"
         case .client: "Client"
         case .project: "Project"
@@ -102,6 +104,7 @@ enum BusinessDimensionKind: String, Codable, CaseIterable, Identifiable {
     var pluralLabel: String {
         switch self {
         case .account: "Accounts"
+        case .paymentMethod: "Payment Methods"
         case .vendor: "Vendors"
         case .client: "Clients"
         case .project: "Projects"
@@ -470,18 +473,21 @@ final class VendorRule {
     var merchantPattern: String = ""
     var defaultCategoryName: String = ""
     var defaultTaxBucket: String = ""
+    var isArchived: Bool = false
     var createdAt: Date = Date()
 
     init(
         merchantPattern: String,
         defaultCategoryName: String,
         defaultTaxBucket: String,
+        isArchived: Bool = false,
         createdAt: Date = Date()
     ) {
         self.id = UUID()
         self.merchantPattern = merchantPattern
         self.defaultCategoryName = defaultCategoryName
         self.defaultTaxBucket = defaultTaxBucket
+        self.isArchived = isArchived
         self.createdAt = createdAt
     }
 }

@@ -266,6 +266,8 @@ enum ExpenseLedger {
         switch kind {
         case .account:
             normalizedDisplayValue(expense.paymentAccount) ?? ""
+        case .paymentMethod:
+            normalizedDisplayValue(expense.paymentMethod) ?? ""
         case .vendor:
             normalizedDisplayValue(expense.vendorName) ?? normalizedDisplayValue(expense.merchant) ?? ""
         case .client:

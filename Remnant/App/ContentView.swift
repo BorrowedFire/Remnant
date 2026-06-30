@@ -77,6 +77,8 @@ struct ContentView: View {
             try? ExpenseLedger.seedDefaultCategoriesIfNeeded(context: modelContext)
             _ = try? ExpenseLedger.clearCompanyProjectAssignmentsIfNeeded(context: modelContext)
             _ = try? RemnantBackupService.runAutomaticBackupIfNeeded(context: modelContext)
+            _ = try? AgentProposalService.syncProposalFiles(context: modelContext)
+            _ = try? AgentSnapshotService.writeSnapshot(context: modelContext)
         }
     }
 

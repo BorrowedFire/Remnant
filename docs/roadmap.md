@@ -14,6 +14,7 @@ Remnant 1.0 is the open-source foundation for local books for solo businesses.
 - Basic `.eml` attachment import
 - Backup and restore with integrity checks
 - Raw expense CSV, tax-bucket summary CSV, and billable expense export
+- Local `remnantctl`, redacted ledger snapshot, stdio MCP, and Review Inbox proposal workflow
 - OSS documentation, templates, and privacy-first contribution rules
 
 ## Deferred
@@ -27,5 +28,6 @@ Remnant 1.0 is the open-source foundation for local books for solo businesses.
 - Formal reconciliation
 - Cloud sync or hosted collaboration
 - Command palette and saved custom views
+- Embedded AI, Apple Intelligence, Foundation Models, App Intents, Siri, Shortcuts, BYO cloud model keys, hosted model providers, and network MCP/API listeners
 
 Large features require an accepted issue or RFC before implementation.

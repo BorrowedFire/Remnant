@@ -7,27 +7,54 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BD4E12392314315E5FA0F62 /* remnantctl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58B02D8DDAC51FC92F2372F1 /* remnantctl.swift */; };
 		0E64FC1918D7F610DE36FF8C /* RemnantBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */; };
+		0FC9524940BFE85672D57FC2 /* AgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3044426A7C57C5A4627038F /* AgentModels.swift */; };
+		11C3B134F619E9F0B5FD6BFE /* AgentWorkspaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB738A220B40C23394F4FE8 /* AgentWorkspaceService.swift */; };
 		193FB67F9F5F79ADBF095194 /* Date+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2735E981CE5C1235F0FFF5C /* Date+Helpers.swift */; };
+		1C7D6D11C2331A5F7E11DD70 /* Decimal+Currency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B489005A7FC3BBBFFE5DE1B /* Decimal+Currency.swift */; };
 		29EF38EED64E0D05AB3EDEFB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0AA1A112C1F73561E11962E2 /* PrivacyInfo.xcprivacy */; };
+		3B25798683FC75BA7DECB2DE /* AgentMCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A3831F9E92ED0692D5C4CC /* AgentMCPServer.swift */; };
+		433D3C0FACD7F6F779072331 /* AgentWorkspaceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB738A220B40C23394F4FE8 /* AgentWorkspaceService.swift */; };
+		44C84F4E335937924B2DAF74 /* VendorRuleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16CC925514BB5EBBD1C8DA17 /* VendorRuleMatcher.swift */; };
 		5F68DD644501542946A701C8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 796BF34DA056B7065C30890D /* Assets.xcassets */; };
 		60C2B771F3389050546DC1D9 /* Decimal+Currency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B489005A7FC3BBBFFE5DE1B /* Decimal+Currency.swift */; };
 		65288D1F812033FF73007E69 /* ExpenseLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A89DF6D0FEC09B1849EBFFC3 /* ExpenseLedger.swift */; };
+		6EDC278DFCA04D2AE1E403B9 /* ReceiptMetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170474F5123A7B5B7D8828D0 /* ReceiptMetadataExtractor.swift */; };
+		706A2B7B097A09AC256BFBC1 /* Date+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2735E981CE5C1235F0FFF5C /* Date+Helpers.swift */; };
+		71748133D604C267F8836E8C /* ExpenseLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = A89DF6D0FEC09B1849EBFFC3 /* ExpenseLedger.swift */; };
 		783FB8991C81ED19FB4EADD4 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 230AF27FAB36B0FF71B74793 /* Colors.swift */; };
+		7F458FA103ED12F4247A68D2 /* AgentMCPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A3831F9E92ED0692D5C4CC /* AgentMCPServer.swift */; };
 		7F5787401C6FE69396E7E0E3 /* RemnantApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2271F2386F1F0ED616660C44 /* RemnantApp.swift */; };
+		803F58D4894B7DBBF71DE160 /* AgentCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4270343E892B70F24F66C76A /* AgentCommandService.swift */; };
 		81E6B623616EF54238C905E2 /* ExpenseTrackerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6D282FB74E993A96D781BF4 /* ExpenseTrackerViews.swift */; };
 		83110AC01824F2F9161B9F21 /* ReceiptBackfillImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97AE36FD49835ACF457D2EEC /* ReceiptBackfillImportService.swift */; };
+		8CCC410E32650ED2F77B7F7D /* RemnantBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */; };
 		8EFDFE0C392B8F4308251B62 /* VendorRuleMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16CC925514BB5EBBD1C8DA17 /* VendorRuleMatcher.swift */; };
+		8F7F05C6176C04ABAEF55FB1 /* ReceiptMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */; };
+		9554A306602E6F07882EB33B /* ExpenseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46451DD188164F8912A6E777 /* ExpenseModels.swift */; };
 		9CB17E2B4C23C3EDB08C61AA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 453AAD41309290B4C84C08DB /* ContentView.swift */; };
+		A1FAB04D46543AA8F1FB3E65 /* EmailReceiptImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */; };
 		A39EA7F18BFD7A1237F45CE1 /* RemnantTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7F9269A2BD619FC0001B3E /* RemnantTests.swift */; };
+		A6C394DF1C4D0BCC776F7908 /* AgentProposalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D1FC17767C35D7551D7E21 /* AgentProposalService.swift */; };
 		AC87F1A08362A4172B39FFA8 /* ExpenseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46451DD188164F8912A6E777 /* ExpenseModels.swift */; };
+		ADBD3AB6B11BF32BB4B0A848 /* AgentProposalService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78D1FC17767C35D7551D7E21 /* AgentProposalService.swift */; };
 		B7A1B0AD74F56AC1AFC492F4 /* AuditPackageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFAE069AE6C2CE282C4D4A6 /* AuditPackageService.swift */; };
 		B94F324F22D87641B2F4835C /* ExpenseImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */; };
+		BD63AE282771C39687D253E0 /* AuditPackageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DFAE069AE6C2CE282C4D4A6 /* AuditPackageService.swift */; };
 		C04937DF6A58955D27CF3BEC /* EmailReceiptImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */; };
+		CAFA8310D44B8DB311064562 /* ReceiptBackfillImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97AE36FD49835ACF457D2EEC /* ReceiptBackfillImportService.swift */; };
+		CFEC5275A492930B13B9D1A3 /* AgentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3044426A7C57C5A4627038F /* AgentModels.swift */; };
+		D1D4534E85CCE2F16BADC837 /* ExpenseCSVDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1587FBA7D14847278B7A5A3C /* ExpenseCSVDocument.swift */; };
 		D49682679C036E7240077E76 /* ExpenseCSVDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1587FBA7D14847278B7A5A3C /* ExpenseCSVDocument.swift */; };
+		DA72AE8C043B45D1D255DCEE /* ExpenseImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */; };
+		E2F903D30B216F8FF3E6C56A /* RemnantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A387ED92D6B663C31F690B6 /* RemnantStore.swift */; };
+		E802E2C99A4D098F7EF4CD77 /* RemnantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A387ED92D6B663C31F690B6 /* RemnantStore.swift */; };
 		EABF89BD0F504A6C4AAB26FD /* ReceiptMetadataExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170474F5123A7B5B7D8828D0 /* ReceiptMetadataExtractor.swift */; };
 		EB0952DBB972D58FD55D27B8 /* ReceiptMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */; };
 		EBD1D6E9B6B55ADC8CEC8D0D /* ReceiptVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B324A5203874B79BF09613C /* ReceiptVault.swift */; };
+		F0BEA11F9C3787D15219B701 /* AgentCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4270343E892B70F24F66C76A /* AgentCommandService.swift */; };
+		FD4684648193ED1A42B82946 /* ReceiptVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B324A5203874B79BF09613C /* ReceiptVault.swift */; };
 		FF3EED7F7C3830C590FBE9B5 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20CB1D6382C369A5F17CC85D /* DesignTokens.swift */; };
 /* End PBXBuildFile section */
 
@@ -51,19 +78,27 @@
 		20CB1D6382C369A5F17CC85D /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		2271F2386F1F0ED616660C44 /* RemnantApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantApp.swift; sourceTree = "<group>"; };
 		230AF27FAB36B0FF71B74793 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		4270343E892B70F24F66C76A /* AgentCommandService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentCommandService.swift; sourceTree = "<group>"; };
 		453AAD41309290B4C84C08DB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		46451DD188164F8912A6E777 /* ExpenseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseModels.swift; sourceTree = "<group>"; };
+		49BF32CB71BF69091DC8A00F /* remnantctl */ = {isa = PBXFileReference; includeInIndex = 0; path = remnantctl; sourceTree = BUILT_PRODUCTS_DIR; };
 		4B489005A7FC3BBBFFE5DE1B /* Decimal+Currency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Decimal+Currency.swift"; sourceTree = "<group>"; };
+		58B02D8DDAC51FC92F2372F1 /* remnantctl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = remnantctl.swift; sourceTree = "<group>"; };
 		6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantBackupService.swift; sourceTree = "<group>"; };
 		6BB44B412D5FDC268D015277 /* ReceiptMatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptMatcher.swift; sourceTree = "<group>"; };
 		6DFAE069AE6C2CE282C4D4A6 /* AuditPackageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditPackageService.swift; sourceTree = "<group>"; };
+		78D1FC17767C35D7551D7E21 /* AgentProposalService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentProposalService.swift; sourceTree = "<group>"; };
 		796BF34DA056B7065C30890D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailReceiptImportService.swift; sourceTree = "<group>"; };
+		8A387ED92D6B663C31F690B6 /* RemnantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantStore.swift; sourceTree = "<group>"; };
 		97AE36FD49835ACF457D2EEC /* ReceiptBackfillImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptBackfillImportService.swift; sourceTree = "<group>"; };
 		9822193F398585E988A7474B /* RemnantTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RemnantTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A89DF6D0FEC09B1849EBFFC3 /* ExpenseLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseLedger.swift; sourceTree = "<group>"; };
+		B4A3831F9E92ED0692D5C4CC /* AgentMCPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentMCPServer.swift; sourceTree = "<group>"; };
+		BFB738A220B40C23394F4FE8 /* AgentWorkspaceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWorkspaceService.swift; sourceTree = "<group>"; };
 		CD7F9269A2BD619FC0001B3E /* RemnantTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemnantTests.swift; sourceTree = "<group>"; };
 		E2735E981CE5C1235F0FFF5C /* Date+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Helpers.swift"; sourceTree = "<group>"; };
+		E3044426A7C57C5A4627038F /* AgentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModels.swift; sourceTree = "<group>"; };
 		E6D282FB74E993A96D781BF4 /* ExpenseTrackerViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseTrackerViews.swift; sourceTree = "<group>"; };
 		F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpenseImportService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -91,9 +126,18 @@
 			isa = PBXGroup;
 			children = (
 				003D3E4CC81E0865BDA9C031 /* Remnant.app */,
+				49BF32CB71BF69091DC8A00F /* remnantctl */,
 				9822193F398585E988A7474B /* RemnantTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		52CDEE89ACB63495FDBA8C40 /* RemnantCLI */ = {
+			isa = PBXGroup;
+			children = (
+				58B02D8DDAC51FC92F2372F1 /* remnantctl.swift */,
+			);
+			path = RemnantCLI;
 			sourceTree = "<group>";
 		};
 		7338A8C0CD0388CB1317C852 /* Resources */ = {
@@ -118,6 +162,7 @@
 			isa = PBXGroup;
 			children = (
 				E041F471A9640D0821D78A30 /* Remnant */,
+				52CDEE89ACB63495FDBA8C40 /* RemnantCLI */,
 				2175CC25DCDC1F89BE6DCCC8 /* RemnantTests */,
 				29B42320F8517B6A6AB96654 /* Products */,
 			);
@@ -126,6 +171,10 @@
 		BE248A1D61419F28BB55E0B4 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				4270343E892B70F24F66C76A /* AgentCommandService.swift */,
+				B4A3831F9E92ED0692D5C4CC /* AgentMCPServer.swift */,
+				78D1FC17767C35D7551D7E21 /* AgentProposalService.swift */,
+				BFB738A220B40C23394F4FE8 /* AgentWorkspaceService.swift */,
 				6DFAE069AE6C2CE282C4D4A6 /* AuditPackageService.swift */,
 				85688BC03A1223709C599D7D /* EmailReceiptImportService.swift */,
 				F5D3FB11EA9F6D57F2CB84FF /* ExpenseImportService.swift */,
@@ -135,6 +184,7 @@
 				170474F5123A7B5B7D8828D0 /* ReceiptMetadataExtractor.swift */,
 				0B324A5203874B79BF09613C /* ReceiptVault.swift */,
 				6068E3CCD45A3FF1C192BB89 /* RemnantBackupService.swift */,
+				8A387ED92D6B663C31F690B6 /* RemnantStore.swift */,
 				16CC925514BB5EBBD1C8DA17 /* VendorRuleMatcher.swift */,
 			);
 			path = Services;
@@ -143,6 +193,7 @@
 		D81B10F7C3A0B34A41FDCA38 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				E3044426A7C57C5A4627038F /* AgentModels.swift */,
 				1587FBA7D14847278B7A5A3C /* ExpenseCSVDocument.swift */,
 				46451DD188164F8912A6E777 /* ExpenseModels.swift */,
 			);
@@ -182,6 +233,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0F32B150C2150B62B2C702A3 /* remnantctl */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 35B2416F0696C47CC34FD2AB /* Build configuration list for PBXNativeTarget "remnantctl" */;
+			buildPhases = (
+				CA011499D0305CEF1DB04273 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = remnantctl;
+			packageProductDependencies = (
+			);
+			productName = remnantctl;
+			productReference = 49BF32CB71BF69091DC8A00F /* remnantctl */;
+			productType = "com.apple.product-type.tool";
+		};
 		C32582E293A80DE679A83985 /* Remnant */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DA6F242A37E113EB39A725E8 /* Build configuration list for PBXNativeTarget "Remnant" */;
@@ -245,6 +313,7 @@
 			targets = (
 				C32582E293A80DE679A83985 /* Remnant */,
 				F59C9731A40F8D38E9B54AF3 /* RemnantTests */,
+				0F32B150C2150B62B2C702A3 /* remnantctl */,
 			);
 		};
 /* End PBXProject section */
@@ -266,6 +335,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F0BEA11F9C3787D15219B701 /* AgentCommandService.swift in Sources */,
+				3B25798683FC75BA7DECB2DE /* AgentMCPServer.swift in Sources */,
+				0FC9524940BFE85672D57FC2 /* AgentModels.swift in Sources */,
+				ADBD3AB6B11BF32BB4B0A848 /* AgentProposalService.swift in Sources */,
+				11C3B134F619E9F0B5FD6BFE /* AgentWorkspaceService.swift in Sources */,
 				B7A1B0AD74F56AC1AFC492F4 /* AuditPackageService.swift in Sources */,
 				783FB8991C81ED19FB4EADD4 /* Colors.swift in Sources */,
 				9CB17E2B4C23C3EDB08C61AA /* ContentView.swift in Sources */,
@@ -284,7 +358,36 @@
 				EBD1D6E9B6B55ADC8CEC8D0D /* ReceiptVault.swift in Sources */,
 				7F5787401C6FE69396E7E0E3 /* RemnantApp.swift in Sources */,
 				0E64FC1918D7F610DE36FF8C /* RemnantBackupService.swift in Sources */,
+				E802E2C99A4D098F7EF4CD77 /* RemnantStore.swift in Sources */,
 				8EFDFE0C392B8F4308251B62 /* VendorRuleMatcher.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CA011499D0305CEF1DB04273 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				803F58D4894B7DBBF71DE160 /* AgentCommandService.swift in Sources */,
+				7F458FA103ED12F4247A68D2 /* AgentMCPServer.swift in Sources */,
+				CFEC5275A492930B13B9D1A3 /* AgentModels.swift in Sources */,
+				A6C394DF1C4D0BCC776F7908 /* AgentProposalService.swift in Sources */,
+				433D3C0FACD7F6F779072331 /* AgentWorkspaceService.swift in Sources */,
+				BD63AE282771C39687D253E0 /* AuditPackageService.swift in Sources */,
+				706A2B7B097A09AC256BFBC1 /* Date+Helpers.swift in Sources */,
+				1C7D6D11C2331A5F7E11DD70 /* Decimal+Currency.swift in Sources */,
+				A1FAB04D46543AA8F1FB3E65 /* EmailReceiptImportService.swift in Sources */,
+				D1D4534E85CCE2F16BADC837 /* ExpenseCSVDocument.swift in Sources */,
+				DA72AE8C043B45D1D255DCEE /* ExpenseImportService.swift in Sources */,
+				71748133D604C267F8836E8C /* ExpenseLedger.swift in Sources */,
+				9554A306602E6F07882EB33B /* ExpenseModels.swift in Sources */,
+				CAFA8310D44B8DB311064562 /* ReceiptBackfillImportService.swift in Sources */,
+				8F7F05C6176C04ABAEF55FB1 /* ReceiptMatcher.swift in Sources */,
+				6EDC278DFCA04D2AE1E403B9 /* ReceiptMetadataExtractor.swift in Sources */,
+				FD4684648193ED1A42B82946 /* ReceiptVault.swift in Sources */,
+				8CCC410E32650ED2F77B7F7D /* RemnantBackupService.swift in Sources */,
+				E2F903D30B216F8FF3E6C56A /* RemnantStore.swift in Sources */,
+				44C84F4E335937924B2DAF74 /* VendorRuleMatcher.swift in Sources */,
+				0BD4E12392314315E5FA0F62 /* remnantctl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -405,6 +508,20 @@
 			};
 			name = Release;
 		};
+		97BC6EBABC9E9B3BA5BD4D4A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.borrowedfire.remnant.remnantctl;
+				PRODUCT_NAME = remnantctl;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
 		C6401B643C9E2572F58F5E6D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -496,9 +613,32 @@
 			};
 			name = Debug;
 		};
+		FDD2B55D7349FEB3C228E143 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.borrowedfire.remnant.remnantctl;
+				PRODUCT_NAME = remnantctl;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		35B2416F0696C47CC34FD2AB /* Build configuration list for PBXNativeTarget "remnantctl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				97BC6EBABC9E9B3BA5BD4D4A /* Debug */,
+				FDD2B55D7349FEB3C228E143 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		5420982B48B9A27706DCBB8F /* Build configuration list for PBXNativeTarget "RemnantTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
