@@ -2254,6 +2254,56 @@ struct ExpenseLedgerTests {
         #expect(skipped == nil)
     }
 
+    @Test("Native command state routes sections and global expense creation")
+    func nativeCommandStateRoutesSectionsAndGlobalExpenseCreation() {
+        let appState = RemnantAppState()
+
+        #expect(ExpenseSection.allCases.map(\.rawValue) == [
+            "Dashboard",
+            "Review Inbox",
+            "Expenses",
+            "Imports",
+            "Reports"
+        ])
+
+        appState.select(.reports)
+        #expect(appState.selectedSection == .reports)
+
+        appState.showNewExpense()
+        #expect(appState.selectedSection == .expenses)
+        #expect(appState.presentedSheet?.id == RemnantSheetDestination.newExpense.id)
+
+        appState.request(.focusSearch)
+        #expect(appState.commandRequest?.kind == .focusSearch)
+    }
+
+    @Test("Focused command actions expose capability flags")
+    func focusedCommandActionsExposeCapabilityFlags() {
+        let emptyActions = RemnantFocusedActions()
+        let populatedActions = RemnantFocusedActions(
+            editSelection: {},
+            openSelection: {},
+            openReceipt: {},
+            markReviewed: {},
+            ignoreSelection: {},
+            copySelection: {}
+        )
+
+        #expect(!emptyActions.canEditSelection)
+        #expect(!emptyActions.canOpenSelection)
+        #expect(!emptyActions.canOpenReceipt)
+        #expect(!emptyActions.canReviewSelection)
+        #expect(!emptyActions.canIgnoreSelection)
+        #expect(!emptyActions.canCopySelection)
+
+        #expect(populatedActions.canEditSelection)
+        #expect(populatedActions.canOpenSelection)
+        #expect(populatedActions.canOpenReceipt)
+        #expect(populatedActions.canReviewSelection)
+        #expect(populatedActions.canIgnoreSelection)
+        #expect(populatedActions.canCopySelection)
+    }
+
     private func writeTemporaryCSV(_ csv: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("remnant-\(UUID().uuidString)")

@@ -1,31 +1,10 @@
 import SwiftData
 import SwiftUI
 
-enum ExpenseSection: String, CaseIterable, Hashable, Identifiable {
-    case dashboard = "Dashboard"
-    case review = "Review Inbox"
-    case expenses = "Expenses"
-    case imports = "Imports"
-    case reports = "Reports"
-    case settings = "Settings"
-
-    var id: String { rawValue }
-
-    var systemImage: String {
-        switch self {
-        case .dashboard: "chart.bar.xaxis"
-        case .review: "tray.full"
-        case .expenses: "list.bullet.rectangle"
-        case .imports: "square.and.arrow.down"
-        case .reports: "doc.text.magnifyingglass"
-        case .settings: "lock.shield"
-        }
-    }
-}
-
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var selectedSection: ExpenseSection = .dashboard
+    @ObservedObject var appState: RemnantAppState
+    @SceneStorage("Remnant.selectedSection") private var selectedSectionRawValue = ExpenseSection.dashboard.rawValue
     @State private var reviewInboxFilter = ExpenseReviewInboxFilter.all
     @State private var expenseReviewFilter = ExpenseReviewFilter.needsReview
     @State private var expenseSearchText = ""
@@ -51,7 +30,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
 
-                List(ExpenseSection.allCases, selection: $selectedSection) { section in
+                List(ExpenseSection.allCases, selection: $appState.selectedSection) { section in
                     Label(section.rawValue, systemImage: section.systemImage)
                         .tag(section)
                 }
@@ -65,12 +44,31 @@ struct ContentView: View {
                     Text("Data stays on this Mac")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    SettingsLink {
+                        Label("Settings", systemImage: "gearshape")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
                 }
                 .padding(14)
             }
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 240)
         } detail: {
             detailView
+        }
+        .sheet(item: $appState.presentedSheet) { destination in
+            switch destination {
+            case .newExpense:
+                ExpenseFormView()
+                    .frame(width: 660)
+            }
+        }
+        .onAppear {
+            appState.selectedSection = ExpenseSection(rawValue: selectedSectionRawValue) ?? .dashboard
+        }
+        .onChange(of: appState.selectedSection) { _, section in
+            selectedSectionRawValue = section.rawValue
         }
         .task {
             _ = try? RemnantBackupService.repairReceiptPaths(context: modelContext)
@@ -87,7 +85,7 @@ struct ContentView: View {
         switch selectedSection {
         case .dashboard:
             ExpenseDashboardView(
-                selectedSection: $selectedSection,
+                selectedSection: $appState.selectedSection,
                 reviewInboxFilter: $reviewInboxFilter,
                 expenseReviewFilter: $expenseReviewFilter,
                 expenseSearchText: $expenseSearchText,
@@ -114,8 +112,10 @@ struct ContentView: View {
                 customStartDate: $reportCustomStartDate,
                 customEndDate: $reportCustomEndDate
             )
-        case .settings:
-            ExpenseSettingsView()
         }
+    }
+
+    private var selectedSection: ExpenseSection {
+        appState.selectedSection
     }
 }

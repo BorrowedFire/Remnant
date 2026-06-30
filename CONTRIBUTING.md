@@ -45,6 +45,9 @@ Large accounting features need an accepted issue or RFC before implementation.
 
 - Keep changes narrowly scoped.
 - Add or update tests for behavior changes.
+- Update documentation in the same PR for important user-visible, workflow, command, data model, import/export, scope, feature add/remove, or behavior changes.
+- If an important change intentionally needs no documentation update, say why in the PR description.
+- Documentation must describe shipped behavior, not planned behavior.
 - Preserve local-only behavior: no network calls, sync, analytics, bank linking, CloudKit, StoreKit, or backend dependencies.
 - Do not weaken redaction, import, export, backup, or document-link safety.
 - Run the relevant verification commands before requesting review.

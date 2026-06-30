@@ -2,46 +2,58 @@ import AppKit
 import SwiftData
 import SwiftUI
 
+@MainActor
 @main
-enum RemnantMain {
-    @MainActor private static var delegate: RemnantAppDelegate?
+struct RemnantApp: App {
+    @NSApplicationDelegateAdaptor(RemnantAppDelegate.self) private var appDelegate
+    @StateObject private var appState = RemnantAppState()
 
+    private let container: ModelContainer
+
+    init() {
+        RemnantLaunchPreflight.runCommandLineModesIfNeeded()
+
+        do {
+            container = try RemnantStore.makeContainer()
+        } catch {
+            fatalError("Failed to create local expense store: \(error)")
+        }
+    }
+
+    var body: some Scene {
+        WindowGroup("Remnant") {
+            ContentView(appState: appState)
+                .modelContainer(container)
+                .environmentObject(appState)
+                .frame(minWidth: 920, minHeight: 620)
+        }
+        .windowResizability(.contentMinSize)
+        .commands {
+            RemnantCommands(appState: appState)
+        }
+
+        Settings {
+            ExpenseSettingsView()
+                .modelContainer(container)
+                .frame(width: 720, height: 640)
+        }
+    }
+}
+
+enum RemnantLaunchPreflight {
     @MainActor
-    static func main() {
-        if CommandLine.arguments.contains("--import-receipts-manifest") {
-            do {
-                try ReceiptBackfillImportService.runFromCommandLine(arguments: CommandLine.arguments)
-                exit(0)
-            } catch {
-                fputs("Receipt import failed: \(error.localizedDescription)\n", stderr)
-                exit(1)
-            }
+    static func runCommandLineModesIfNeeded() {
+        guard CommandLine.arguments.contains("--import-receipts-manifest") else {
+            return
         }
 
-        let app = NSApplication.shared
-        let appDelegate = RemnantAppDelegate()
-        delegate = appDelegate
-        app.delegate = appDelegate
-        app.setActivationPolicy(.regular)
-        app.setRemnantApplicationIcon()
-        appDelegate.showMainWindow()
-
-        if CommandLine.arguments.contains("--verify-window") {
-            let visibleWindowCount = app.windows.filter(\.isVisible).count
-            if visibleWindowCount < 1 {
-                fputs("Remnant did not create a visible main window.\n", stderr)
-                exit(1)
-            }
-            if app.applicationIconImage == nil {
-                fputs("Remnant did not load the bundled app icon.\n", stderr)
-                exit(1)
-            }
-            fputs("Remnant window verified: \(visibleWindowCount)\n", stdout)
-            fputs("Remnant app icon verified.\n", stdout)
+        do {
+            try ReceiptBackfillImportService.runFromCommandLine(arguments: CommandLine.arguments)
             exit(0)
+        } catch {
+            fputs("Receipt import failed: \(error.localizedDescription)\n", stderr)
+            exit(1)
         }
-
-        app.run()
     }
 }
 
@@ -58,28 +70,15 @@ private extension NSApplication {
 
 @MainActor
 final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
-    private let container: ModelContainer
-    private var mainWindow: NSWindow?
-
-    override init() {
-        do {
-            container = try RemnantStore.makeContainer()
-        } catch {
-            fatalError("Failed to create local expense store: \(error)")
-        }
-
-        super.init()
-    }
-
     func applicationDidFinishLaunching(_ notification: Notification) {
-        showMainWindow()
-    }
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.setRemnantApplicationIcon()
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            showMainWindow()
+        if CommandLine.arguments.contains("--verify-window") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                RemnantWindowVerifier.verifyAndExit(deadline: Date().addingTimeInterval(5))
+            }
         }
-        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -89,33 +88,68 @@ final class RemnantAppDelegate: NSObject, NSApplicationDelegate {
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         false
     }
+}
 
-    func showMainWindow() {
-        let window: NSWindow
-        if let existingWindow = mainWindow {
-            window = existingWindow
-        } else {
-            window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "Remnant"
-            window.minSize = NSSize(width: 920, height: 620)
-            window.isReleasedWhenClosed = false
-            window.isRestorable = false
-            window.identifier = NSUserInterfaceItemIdentifier("main")
-            window.contentView = NSHostingView(
-                rootView: ContentView()
-                    .modelContainer(container)
-                    .frame(minWidth: 920, minHeight: 620)
-            )
-            window.center()
-            mainWindow = window
+enum RemnantWindowVerifier {
+    @MainActor
+    static func verifyAndExit(deadline: Date) {
+        let app = NSApplication.shared
+        let visibleWindowCount = app.windows.filter(\.isVisible).count
+        let requiredCommands: [(String, String)] = [
+            ("New Expense", "n"),
+            ("Find", "f"),
+            ("Open Receipt", "o"),
+            ("Import Files", "i"),
+            ("Export Current Report", "e")
+        ]
+
+        let missingCommands = requiredCommands.filter { command in
+            !mainMenuContainsItem(title: command.0, keyEquivalent: command.1)
         }
 
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        if visibleWindowCount < 1 || app.applicationIconImage == nil || !missingCommands.isEmpty {
+            guard Date() < deadline else {
+                if visibleWindowCount < 1 {
+                    fputs("Remnant did not create a visible main window.\n", stderr)
+                }
+                if app.applicationIconImage == nil {
+                    fputs("Remnant did not load the bundled app icon.\n", stderr)
+                }
+                for command in missingCommands {
+                    fputs("Remnant menu command missing: \(command.0) (\(command.1)).\n", stderr)
+                }
+                exit(1)
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                verifyAndExit(deadline: deadline)
+            }
+            return
+        }
+
+        fputs("Remnant window verified: \(visibleWindowCount)\n", stdout)
+        fputs("Remnant app icon verified.\n", stdout)
+        fputs("Remnant native commands verified.\n", stdout)
+        exit(0)
+    }
+
+    @MainActor
+    private static func mainMenuContainsItem(title: String, keyEquivalent: String) -> Bool {
+        guard let mainMenu = NSApplication.shared.mainMenu else { return false }
+        return menu(mainMenu, containsItemWithTitle: title, keyEquivalent: keyEquivalent)
+    }
+
+    @MainActor
+    private static func menu(_ menu: NSMenu, containsItemWithTitle title: String, keyEquivalent: String) -> Bool {
+        for item in menu.items {
+            if item.title == title && item.keyEquivalent == keyEquivalent {
+                return true
+            }
+            if let submenu = item.submenu,
+               self.menu(submenu, containsItemWithTitle: title, keyEquivalent: keyEquivalent) {
+                return true
+            }
+        }
+        return false
     }
 }
