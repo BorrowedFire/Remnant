@@ -14,6 +14,7 @@ struct ExpenseDashboardView: View {
     @Binding var reviewInboxFilter: ExpenseReviewInboxFilter
     @Binding var expenseReviewFilter: ExpenseReviewFilter
     @Binding var expenseSearchText: String
+    @Binding var expenseCategoryFilter: String?
     @Binding var reportTaxYear: Int
     @Binding var reportDateRange: ReportDateRange
     @Binding var reportCustomStartDate: Date
@@ -38,9 +39,15 @@ struct ExpenseDashboardView: View {
         ExpenseLedger.totalSpent(in: activeExpenses, for: monthInterval)
     }
 
-    private var yearToDateTotal: Decimal {
+    private var currentYearToDateInterval: DateInterval {
         let interval = ExpenseLedger.yearInterval(Calendar.current.component(.year, from: Date()))
-        return ExpenseLedger.totalSpent(in: activeExpenses, for: interval)
+        let now = Date()
+        let end = now > interval.start ? now : interval.start.addingTimeInterval(1)
+        return DateInterval(start: interval.start, end: end)
+    }
+
+    private var yearToDateTotal: Decimal {
+        ExpenseLedger.totalSpent(in: activeExpenses, for: currentYearToDateInterval)
     }
 
     private var unmatchedReceiptCount: Int {
@@ -207,7 +214,7 @@ struct ExpenseDashboardView: View {
                 } else {
                     ForEach(categorySpend.prefix(6)) { item in
                         CategorySpendRow(item: item, maxAmount: categorySpend.first?.amount ?? 0) {
-                            openExpenses(search: item.name)
+                            openExpenses(category: item.name)
                         }
                     }
                 }
@@ -261,6 +268,14 @@ struct ExpenseDashboardView: View {
     private func openExpenses(search: String) {
         expenseReviewFilter = .all
         expenseSearchText = search
+        expenseCategoryFilter = nil
+        selectedSection = .expenses
+    }
+
+    private func openExpenses(category: String) {
+        expenseReviewFilter = .all
+        expenseSearchText = ""
+        expenseCategoryFilter = category
         selectedSection = .expenses
     }
 
@@ -283,8 +298,7 @@ struct ExpenseDashboardView: View {
     }
 
     private var categorySpend: [CategorySpendItem] {
-        let interval = ExpenseLedger.yearInterval(Calendar.current.component(.year, from: Date()))
-        let grouped = Dictionary(grouping: activeExpenses.filter { interval.contains($0.date) }) { expense in
+        let grouped = Dictionary(grouping: activeExpenses.filter { currentYearToDateInterval.contains($0.date) }) { expense in
             expense.categoryName ?? "Uncategorized"
         }
 
@@ -1075,6 +1089,7 @@ struct ExpenseListView: View {
 
     @Binding var reviewFilter: ExpenseReviewFilter
     @Binding var searchText: String
+    @Binding var categoryFilter: String?
     @State private var followUpFilter = ExpenseFollowUpFilter.all
     @State private var dimensionFilterKind: BusinessDimensionKind?
     @State private var dimensionFilterValue = ""
@@ -1082,23 +1097,37 @@ struct ExpenseListView: View {
     @State private var editingExpense: Expense?
     @State private var selectedExpenseIDs = Set<UUID>()
 
-    init(reviewFilter: Binding<ExpenseReviewFilter>, searchText: Binding<String>) {
+    init(
+        reviewFilter: Binding<ExpenseReviewFilter>,
+        searchText: Binding<String>,
+        categoryFilter: Binding<String?>
+    ) {
         _reviewFilter = reviewFilter
         _searchText = searchText
+        _categoryFilter = categoryFilter
     }
 
     private var filteredExpenses: [Expense] {
         let reviewFiltered = expenses.filter { reviewFilter.includes($0, allExpenses: expenses) }
         let followUpFiltered = followUpFilter.expenses(in: reviewFiltered)
+        let categoryFiltered: [Expense]
+        if let category = normalizedDisplayValue(categoryFilter) {
+            categoryFiltered = followUpFiltered.filter {
+                ($0.categoryName ?? "Uncategorized").localizedCaseInsensitiveCompare(category) == .orderedSame
+            }
+        } else {
+            categoryFiltered = followUpFiltered
+        }
+
         let dimensionFiltered: [Expense]
         if let dimensionFilterKind, !dimensionFilterValue.isEmpty {
             dimensionFiltered = ExpenseLedger.expenses(
-                followUpFiltered,
+                categoryFiltered,
                 matching: dimensionFilterKind,
                 value: dimensionFilterValue
             )
         } else {
-            dimensionFiltered = followUpFiltered
+            dimensionFiltered = categoryFiltered
         }
 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1167,6 +1196,16 @@ struct ExpenseListView: View {
                 .disabled(dimensionFilterKind == nil || dimensionFilterValues.isEmpty)
                 .onChange(of: dimensionFilterValue) { _, _ in
                     selectedExpenseIDs.removeAll()
+                }
+
+                if let category = normalizedDisplayValue(categoryFilter) {
+                    Button {
+                        categoryFilter = nil
+                        selectedExpenseIDs.removeAll()
+                    } label: {
+                        Label("Category: \(category)", systemImage: "xmark.circle")
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
 

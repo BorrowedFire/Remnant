@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var reviewInboxFilter = ExpenseReviewInboxFilter.all
     @State private var expenseReviewFilter = ExpenseReviewFilter.needsReview
     @State private var expenseSearchText = ""
+    @State private var expenseCategoryFilter: String?
     @State private var reportTaxYear = Calendar.current.component(.year, from: Date())
     @State private var reportDateRange = ReportDateRange.taxYear
     @State private var reportCustomStartDate = Calendar.current.date(
@@ -88,6 +89,7 @@ struct ContentView: View {
                 reviewInboxFilter: $reviewInboxFilter,
                 expenseReviewFilter: $expenseReviewFilter,
                 expenseSearchText: $expenseSearchText,
+                expenseCategoryFilter: $expenseCategoryFilter,
                 reportTaxYear: $reportTaxYear,
                 reportDateRange: $reportDateRange,
                 reportCustomStartDate: $reportCustomStartDate,
@@ -96,7 +98,11 @@ struct ContentView: View {
         case .review:
             ExpenseReviewInboxView(issueFilter: $reviewInboxFilter)
         case .expenses:
-            ExpenseListView(reviewFilter: $expenseReviewFilter, searchText: $expenseSearchText)
+            ExpenseListView(
+                reviewFilter: $expenseReviewFilter,
+                searchText: $expenseSearchText,
+                categoryFilter: $expenseCategoryFilter
+            )
         case .imports:
             ImportCenterView()
         case .reports:
