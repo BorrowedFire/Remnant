@@ -15,7 +15,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
 - Local text/PDF receipt metadata extraction for merchant, date, and amount
 - Local Apple Vision OCR for scanned image receipts and scanned PDF pages
-- Local `.eml` import for receipt attachments without Gmail, IMAP, OAuth, or hosted email connectors
+- Local `.eml` import for receipt attachments and body-only receipt evidence without Gmail, IMAP, OAuth, or hosted email connectors
 - Receipt dedupe by content hash
 - Receipt matching panel with local suggestions for attaching inbox receipts to expenses that are missing receipts
 - Single and batch draft-expense creation from downloaded inbox receipts that are not already in the ledger
@@ -23,7 +23,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Local account, vendor, client, and project dimensions for filtering and export
 - Billable and reimbursable expense flags with follow-up filters and scoped CSV export
 - Local vendor rules for categorizing recurring merchants without connecting to a service
-- Report view with formula-safe raw expense, tax-bucket summary, and billable/reimbursable CSV exports by tax year or custom date range
+- Report view with formula-safe raw expense, tax-bucket summary, billable/reimbursable CSV exports, and local audit packages by tax year or custom date range
 - Local backup and staged restore with receipt integrity checks
 - Settings view for local vendor rules and privacy guarantees
 
@@ -84,7 +84,7 @@ xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -dest
 
 ## Replacement Scope
 
-Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, extract receipt metadata with local text/PDF parsing and Apple Vision OCR, import receipt attachments from local `.eml` files, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports, and create local backups with receipt integrity checks.
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, extract receipt metadata with local text/PDF parsing and Apple Vision OCR, import receipt attachments or receipt-like message bodies from local `.eml` files, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports and audit packages with receipt copies, and create local backups with receipt integrity checks.
 
 ## Contributing
 

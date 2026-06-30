@@ -7,10 +7,12 @@ BUNDLE_ID="com.borrowedfire.remnant"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DERIVED_DATA="$ROOT_DIR/build/DerivedData"
 APP_BUNDLE="$DERIVED_DATA/Build/Products/Debug/$APP_NAME.app"
+APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 cd "$ROOT_DIR"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+pkill -f "$APP_EXECUTABLE" >/dev/null 2>&1 || true
 
 xcodegen generate
 xcodebuild \
@@ -30,7 +32,7 @@ case "$MODE" in
     open_app
     ;;
   --debug|debug)
-    lldb -- "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+    lldb -- "$APP_EXECUTABLE"
     ;;
   --logs|logs)
     open_app
@@ -41,7 +43,7 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
-    "$APP_BUNDLE/Contents/MacOS/$APP_NAME" --verify-window
+    "$APP_EXECUTABLE" --verify-window
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
