@@ -13,6 +13,7 @@ struct EmailReceiptAttachmentCandidate: Equatable {
     let filename: String
     let data: Data
     let metadata: EmailReceiptSourceMetadata
+    var isInlineImageAsset = false
 }
 
 struct EmailReceiptImportSummary: Equatable {
@@ -109,8 +110,8 @@ enum EmailReceiptImportService {
             throw EmailReceiptImportError.malformedMessage(url.lastPathComponent)
         }
 
-        if entity.attachments.isEmpty,
-           let bodyEvidence = bodyEvidenceCandidate(from: entity.bodyCandidates, sourceFilename: url.lastPathComponent) {
+        if let bodyEvidence = bodyEvidenceCandidate(from: entity.bodyCandidates, sourceFilename: url.lastPathComponent),
+           entity.attachments.isEmpty || entity.attachments.allSatisfy(\.isInlineImageAsset) {
             return ([bodyEvidence], entity.skippedCount)
         }
 
@@ -206,7 +207,8 @@ enum EmailReceiptImportService {
                 EmailReceiptAttachmentCandidate(
                     filename: safeFilename(filename),
                     data: attachmentData,
-                    metadata: metadata
+                    metadata: metadata,
+                    isInlineImageAsset: isInlineImageAsset(headers: headers)
                 )
             ],
             bodyCandidates: [],
@@ -308,7 +310,7 @@ enum EmailReceiptImportService {
         }
 
         return lowercased.range(
-            of: #"(?:[$€£]\s*)\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\btotal\s*:?\s*\d+\.\d{2}"#,
+            of: #"(?:[$€£]\s*)(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?|\btotal\s*:?\s*(?:[$€£]\s*)?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})"#,
             options: .regularExpression
         ) != nil
     }
@@ -504,6 +506,17 @@ enum EmailReceiptImportService {
         }
 
         return nil
+    }
+
+    private static func isInlineImageAsset(headers: ParsedHeaders) -> Bool {
+        let contentType = parsedHeaderValue(headers["content-type"] ?? "").value.lowercased()
+        guard contentType.hasPrefix("image/") else { return false }
+
+        if let disposition = headers["content-disposition"] {
+            return parsedHeaderValue(disposition).value.lowercased() == "inline"
+        }
+
+        return headers["content-id"] != nil
     }
 
     private static func decodedBody(_ body: String, encoding: String?) -> Data? {

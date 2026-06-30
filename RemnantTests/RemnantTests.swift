@@ -1021,6 +1021,98 @@ struct ExpenseLedgerTests {
         #expect(storedText.contains("Message-ID: <godaddy@example.com>"))
     }
 
+    @Test("Email receipt import prefers body evidence over inline images")
+    func emailReceiptImportPrefersBodyEvidenceOverInlineImages() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let inlineImage = Data("tracking pixel".utf8).base64EncodedString()
+        let emlURL = try writeTemporaryFile(
+            named: "anthropic-message.eml",
+            contents: """
+            From: Anthropic <receipts@anthropic.com>
+            Subject: Anthropic receipt
+            Date: Thu, 11 Jun 2026 12:45:48 -0400
+            Message-ID: <anthropic@example.com>
+            Content-Type: multipart/related; boundary="related-boundary"
+
+            --related-boundary
+            Content-Type: text/html; charset="utf-8"
+
+            <html><body>
+            <h1>Anthropic</h1>
+            <p>Receipt</p>
+            <p>Amount paid $108.88</p>
+            </body></html>
+            --related-boundary
+            Content-Type: image/png; name="logo.png"
+            Content-ID: <logo>
+            Content-Disposition: inline; filename="logo.png"
+            Content-Transfer-Encoding: base64
+
+            \(inlineImage)
+            --related-boundary--
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+        let storedText = try String(contentsOf: URL(fileURLWithPath: attachment.localPath), encoding: .utf8)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.skippedAttachmentCount == 0)
+        #expect(attachments.count == 1)
+        #expect(attachment.originalFilename == "2026-06-11-anthropic-receipt-email-receipt.txt")
+        #expect(attachment.extractedAmount == 108.88)
+        #expect(storedText.contains("Anthropic"))
+        #expect(storedText.contains("--- Source Email ---"))
+    }
+
+    @Test("Email receipt import accepts ungrouped four digit totals")
+    func emailReceiptImportAcceptsUngroupedFourDigitTotals() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(
+            named: "openai-message.eml",
+            contents: """
+            From: OpenAI <noreply@openai.com>
+            Subject: OpenAI API receipt
+            Date: Mon, 29 Jun 2026 12:45:48 -0400
+            Message-ID: <openai-large@example.com>
+            Content-Type: text/plain; charset="utf-8"
+
+            OpenAI
+            Receipt
+            Amount paid $1088.88
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(attachments.count == 1)
+        #expect(attachment.extractedMerchant == "OpenAI")
+        #expect(attachment.extractedAmount == Decimal(string: "1088.88"))
+    }
+
     @Test("Email receipt import ignores body-only non-receipt notices")
     func emailReceiptImportIgnoresBodyOnlyNonReceiptNotices() throws {
         let container = try makeExpenseContainer()
