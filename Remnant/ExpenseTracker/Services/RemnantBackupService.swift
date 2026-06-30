@@ -47,6 +47,11 @@ struct RemnantBackupManifest: Codable, Equatable {
     let receiptFiles: [RemnantBackupFileRecord]
 }
 
+struct RemnantAutomaticBackupResult: Equatable {
+    let backupURL: URL
+    let report: RemnantBackupIntegrityReport
+}
+
 enum RemnantBackupError: LocalizedError {
     case destinationExists(URL)
     case invalidBackup(RemnantBackupIntegrityReport)
@@ -73,10 +78,14 @@ enum RemnantBackupError: LocalizedError {
 @MainActor
 enum RemnantBackupService {
     static let backupExtension = "remnantbackup"
+    static let automaticBackupEnabledKey = "remnant.automaticBackup.enabled"
+    static let automaticBackupLastRunKey = "remnant.automaticBackup.lastRun"
+    static let automaticBackupMinimumInterval: TimeInterval = 86_400
 
     private static let manifestFilename = "manifest.json"
     private static let storeDirectoryName = "Store"
     private static let receiptDirectoryName = "Receipts"
+    private static let automaticBackupDirectoryName = "AutomaticBackups"
 
     @discardableResult
     static func createBackup(
@@ -131,6 +140,72 @@ enum RemnantBackupService {
         try writeManifest(manifest, to: destinationURL)
 
         return liveReport
+    }
+
+    @discardableResult
+    static func runAutomaticBackupIfNeeded(
+        context: ModelContext,
+        storeURL: URL? = nil,
+        vaultDirectory: URL? = nil,
+        backupRootDirectory: URL? = nil,
+        defaults: UserDefaults = .standard,
+        now: Date = Date(),
+        minimumInterval: TimeInterval = automaticBackupMinimumInterval
+    ) throws -> RemnantAutomaticBackupResult? {
+        guard defaults.bool(forKey: automaticBackupEnabledKey) else {
+            return nil
+        }
+
+        let lastRun = defaults.double(forKey: automaticBackupLastRunKey)
+        guard lastRun <= 0 || now.timeIntervalSince1970 - lastRun >= minimumInterval else {
+            return nil
+        }
+
+        return try createAutomaticBackup(
+            context: context,
+            storeURL: storeURL,
+            vaultDirectory: vaultDirectory,
+            backupRootDirectory: backupRootDirectory,
+            defaults: defaults,
+            now: now
+        )
+    }
+
+    @discardableResult
+    static func createAutomaticBackup(
+        context: ModelContext,
+        storeURL: URL? = nil,
+        vaultDirectory: URL? = nil,
+        backupRootDirectory: URL? = nil,
+        defaults: UserDefaults = .standard,
+        now: Date = Date()
+    ) throws -> RemnantAutomaticBackupResult {
+        let backupDirectory = try automaticBackupDirectory(rootDirectory: backupRootDirectory)
+        try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+
+        let backupURL = backupDirectory.appendingPathComponent(
+            "remnant-auto-\(automaticBackupDateFormatter.string(from: now))-\(UUID().uuidString.prefix(6)).\(backupExtension)",
+            isDirectory: true
+        )
+        let report = try createBackup(
+            at: backupURL,
+            context: context,
+            storeURL: storeURL,
+            vaultDirectory: vaultDirectory,
+            allowOverwrite: false
+        )
+        defaults.set(now.timeIntervalSince1970, forKey: automaticBackupLastRunKey)
+        return RemnantAutomaticBackupResult(backupURL: backupURL, report: report)
+    }
+
+    static func automaticBackupDirectory(rootDirectory: URL? = nil) throws -> URL {
+        let baseDirectory: URL
+        if let rootDirectory {
+            baseDirectory = rootDirectory
+        } else {
+            baseDirectory = try RemnantStore.defaultStoreURL().deletingLastPathComponent()
+        }
+        return baseDirectory.appendingPathComponent(automaticBackupDirectoryName, isDirectory: true)
     }
 
     static func stageRestore(
@@ -438,5 +513,13 @@ enum RemnantBackupService {
 
     private static func normalizedHash(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static var automaticBackupDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return formatter
     }
 }

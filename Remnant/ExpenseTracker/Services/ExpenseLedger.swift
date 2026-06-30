@@ -3,6 +3,16 @@ import SwiftData
 
 @MainActor
 enum ExpenseLedger {
+    static let defaultProjectNames = [
+        "NextCatch",
+        "Remnant"
+    ]
+
+    private static let companyProjectNames = [
+        "Borrowed Fire",
+        "Borrowed Fire LLC"
+    ]
+
     static func seedDefaultCategoriesIfNeeded(context: ModelContext) throws {
         let categories = try context.fetch(FetchDescriptor<ExpenseCategory>())
         var existingNames = Set(categories.map { normalized($0.name) })
@@ -28,6 +38,35 @@ enum ExpenseLedger {
         if insertedCount > 0 {
             try context.save()
         }
+    }
+
+    @discardableResult
+    static func clearCompanyProjectAssignmentsIfNeeded(context: ModelContext) throws -> Int {
+        let expenses = try context.fetch(FetchDescriptor<Expense>())
+        let changedCount = clearCompanyProjectAssignments(in: expenses)
+        if changedCount > 0 {
+            try context.save()
+        }
+        return changedCount
+    }
+
+    @discardableResult
+    static func clearCompanyProjectAssignments(
+        in expenses: [Expense],
+        updatedAt: Date = Date()
+    ) -> Int {
+        var changedCount = 0
+        for expense in expenses where isCompanyProjectName(expense.projectName) {
+            expense.projectName = ""
+            expense.updatedAt = updatedAt
+            changedCount += 1
+        }
+        return changedCount
+    }
+
+    static func isCompanyProjectName(_ value: String?) -> Bool {
+        guard let normalizedValue = normalizedOptional(value) else { return false }
+        return companyProjectNames.map(normalized).contains(normalizedValue)
     }
 
     static func totalSpent(in expenses: [Expense], for interval: DateInterval) -> Decimal {

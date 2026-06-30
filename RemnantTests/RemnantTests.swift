@@ -356,6 +356,25 @@ struct ExpenseLedgerTests {
         #expect(kinds == Set(BusinessDimensionKind.allCases))
     }
 
+    @Test("Company names are cleared from project assignments")
+    func companyNamesAreClearedFromProjectAssignments() throws {
+        let timestamp = try makeUTCDate(year: 2026, month: 6, day: 1)
+        let companyExpense = Expense(merchant: "X Premium", amount: 4, projectName: "Borrowed Fire")
+        let projectExpense = Expense(merchant: "Apple Ads", amount: 8, projectName: "NextCatch")
+
+        let changedCount = ExpenseLedger.clearCompanyProjectAssignments(
+            in: [companyExpense, projectExpense],
+            updatedAt: timestamp
+        )
+
+        #expect(changedCount == 1)
+        #expect(companyExpense.projectName == "")
+        #expect(companyExpense.updatedAt == timestamp)
+        #expect(projectExpense.projectName == "NextCatch")
+        #expect(projectExpense.updatedAt != timestamp)
+        #expect(ExpenseLedger.defaultProjectNames.contains("NextCatch"))
+    }
+
     @Test("Expense store can use explicit 1.0 store URL")
     func expenseStoreCanUseExplicitV1StoreURL() throws {
         let directory = try makeTemporaryDirectory()
@@ -947,6 +966,186 @@ struct ExpenseLedgerTests {
         #expect(attachments.isEmpty)
     }
 
+    @Test("Email receipt import preserves body-only receipt evidence")
+    func emailReceiptImportPreservesBodyOnlyReceiptEvidence() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(
+            named: "godaddy-message.eml",
+            contents: """
+            From: GoDaddy <donotreply@godaddy.com>
+            Subject: GoDaddy order confirmation
+            Date: Sun, 18 Jan 2026 12:45:48 -0400
+            Message-ID: <godaddy@example.com>
+            Content-Type: text/plain; charset="utf-8"
+
+            GoDaddy
+            Order Number: 3994959538
+            .COM Domain Registration
+            $5.19
+            Full Domain Protection
+            $12.99
+            Microsoft 365 Email Essentials
+            $11.88
+            Subtotal:
+            $30.06
+            Tax:
+            $1.05
+            Total:
+            $31.11
+            View Full Receipt
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+        let storedText = try String(contentsOf: URL(fileURLWithPath: attachment.localPath), encoding: .utf8)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.skippedAttachmentCount == 0)
+        #expect(attachments.count == 1)
+        #expect(attachment.originalFilename == "2026-01-18-godaddy-order-confirmation-email-receipt.txt")
+        #expect(attachment.extractedMerchant == "GoDaddy")
+        #expect(attachment.extractedAmount == 31.11)
+        #expect(attachment.sourceMessageSubject == "GoDaddy order confirmation")
+        #expect(storedText.contains("--- Source Email ---"))
+        #expect(storedText.contains("Message-ID: <godaddy@example.com>"))
+    }
+
+    @Test("Email receipt import prefers body evidence over inline images")
+    func emailReceiptImportPrefersBodyEvidenceOverInlineImages() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let inlineImage = Data("tracking pixel".utf8).base64EncodedString()
+        let emlURL = try writeTemporaryFile(
+            named: "anthropic-message.eml",
+            contents: """
+            From: Anthropic <receipts@anthropic.com>
+            Subject: Anthropic receipt
+            Date: Thu, 11 Jun 2026 12:45:48 -0400
+            Message-ID: <anthropic@example.com>
+            Content-Type: multipart/related; boundary="related-boundary"
+
+            --related-boundary
+            Content-Type: text/html; charset="utf-8"
+
+            <html><body>
+            <h1>Anthropic</h1>
+            <p>Receipt</p>
+            <p>Amount paid $108.88</p>
+            </body></html>
+            --related-boundary
+            Content-Type: image/png; name="logo.png"
+            Content-ID: <logo>
+            Content-Disposition: inline; filename="logo.png"
+            Content-Transfer-Encoding: base64
+
+            \(inlineImage)
+            --related-boundary--
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+        let storedText = try String(contentsOf: URL(fileURLWithPath: attachment.localPath), encoding: .utf8)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.skippedAttachmentCount == 0)
+        #expect(attachments.count == 1)
+        #expect(attachment.originalFilename == "2026-06-11-anthropic-receipt-email-receipt.txt")
+        #expect(attachment.extractedAmount == 108.88)
+        #expect(storedText.contains("Anthropic"))
+        #expect(storedText.contains("--- Source Email ---"))
+    }
+
+    @Test("Email receipt import accepts ungrouped four digit totals")
+    func emailReceiptImportAcceptsUngroupedFourDigitTotals() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(
+            named: "openai-message.eml",
+            contents: """
+            From: OpenAI <noreply@openai.com>
+            Subject: OpenAI API receipt
+            Date: Mon, 29 Jun 2026 12:45:48 -0400
+            Message-ID: <openai-large@example.com>
+            Content-Type: text/plain; charset="utf-8"
+
+            OpenAI
+            Receipt
+            Amount paid $1088.88
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let attachment = try #require(attachments.first)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(attachments.count == 1)
+        #expect(attachment.extractedMerchant == "OpenAI")
+        #expect(attachment.extractedAmount == Decimal(string: "1088.88"))
+    }
+
+    @Test("Email receipt import ignores body-only non-receipt notices")
+    func emailReceiptImportIgnoresBodyOnlyNonReceiptNotices() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let vaultURL = try makeTemporaryDirectory()
+        let emlURL = try writeTemporaryFile(
+            named: "supabase-notice.eml",
+            contents: """
+            From: Supabase Billing Team <billing-support@supabase.com>
+            Subject: Supabase - New project launched
+            Date: Fri, 22 May 2026 18:13:13 -0400
+            Message-ID: <supabase@example.com>
+            Content-Type: text/plain; charset="utf-8"
+
+            Your monthly bill will increase by $10/month because a new project was launched.
+            You can see current month costs on your organization's billing page.
+            """
+        )
+
+        let summary = EmailReceiptImportService.importEMLFiles(
+            at: [emlURL],
+            context: context,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        #expect(summary.importedCount == 0)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.failedFilenames.isEmpty)
+        #expect(attachments.isEmpty)
+    }
+
     @Test("Email receipt import reports malformed messages safely")
     func emailReceiptImportReportsMalformedMessagesSafely() throws {
         let container = try makeExpenseContainer()
@@ -966,6 +1165,311 @@ struct ExpenseLedgerTests {
         #expect(summary.duplicateCount == 0)
         #expect(summary.failedFilenames == ["bad.eml"])
         #expect(attachments.isEmpty)
+    }
+
+    @Test("Receipt backfill manifest import creates draft expenses with source metadata")
+    func receiptBackfillManifestImportCreatesDraftExpensesWithSourceMetadata() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("ReceiptBackfill.store")
+        let vaultURL = directory.appendingPathComponent("ReceiptVault", isDirectory: true)
+        let receiptURL = try writeTemporaryFile(
+            named: "openai-api-funded.txt",
+            contents: """
+            OpenAI, LLC
+            Receipt
+            Date: 2026-06-02
+            Total: $10.80
+            """
+        )
+        let manifestURL = try writeTemporaryFile(
+            named: "receipt-backfill-manifest.json",
+            contents: """
+            {
+              "sourceName": "Gmail receipt backfill",
+              "notes": "Unit test import",
+              "items": [
+                {
+                  "filePath": "\(receiptURL.path)",
+                  "merchant": "OpenAI",
+                  "amount": "10.80",
+                  "date": "2026-06-02",
+                  "categoryName": "AI Tools",
+                  "status": "draft",
+                  "note": "API account funded. Confirm business classification.",
+                  "sourceMessageFilename": "19e89816235aaa97.eml",
+                  "sourceMessageSubject": "OpenAI API account funded",
+                  "sourceMessageSender": "OpenAI <noreply@tm.openai.com>",
+                  "sourceMessageDate": "2026-06-02T18:03:36Z",
+                  "sourceMessageID": "19e89816235aaa97"
+                }
+              ]
+            }
+            """
+        )
+
+        let summary = try ReceiptBackfillImportService.importManifest(
+            at: manifestURL,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL
+        )
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        let expenses = try context.fetch(FetchDescriptor<Expense>())
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let batches = try context.fetch(FetchDescriptor<ImportBatch>())
+        let expense = try #require(expenses.first)
+        let attachment = try #require(attachments.first)
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.failedCount == 0)
+        #expect(summary.totalAmount == 10.80)
+        #expect(expenses.count == 1)
+        #expect(attachments.count == 1)
+        #expect(batches.count == 1)
+        #expect(expense.merchant == "OpenAI")
+        #expect(expense.amount == 10.80)
+        #expect(expense.categoryName == "AI Tools")
+        #expect(expense.status == .draft)
+        #expect(expense.source == .receiptDraft)
+        #expect(expense.receiptAttachmentID == attachment.id)
+        #expect(attachment.expenseID == expense.id)
+        #expect(attachment.sourceMessageID == "19e89816235aaa97")
+        #expect(attachment.sourceMessageDate != nil)
+        #expect(FileManager.default.fileExists(atPath: attachment.localPath))
+    }
+
+    @Test("Receipt backfill keeps same day same amount invoices when receipt files differ")
+    func receiptBackfillKeepsSameDaySameAmountInvoicesWhenReceiptFilesDiffer() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("ReceiptBackfillSameAmount.store")
+        let vaultURL = directory.appendingPathComponent("ReceiptVault", isDirectory: true)
+        let firstReceiptURL = try writeTemporaryFile(
+            named: "cloudflare-in-64069101.txt",
+            contents: """
+            Cloudflare
+            Invoice: IN-64069101
+            Date: 2026-05-02
+            Total: $10.46
+            """
+        )
+        let secondReceiptURL = try writeTemporaryFile(
+            named: "cloudflare-in-64068941.txt",
+            contents: """
+            Cloudflare
+            Invoice: IN-64068941
+            Date: 2026-05-02
+            Total: $10.46
+            """
+        )
+        let manifestURL = try writeTemporaryFile(
+            named: "receipt-backfill-same-amount-manifest.json",
+            contents: """
+            {
+              "sourceName": "Gmail receipt backfill",
+              "items": [
+                {
+                  "filePath": "\(firstReceiptURL.path)",
+                  "merchant": "Cloudflare",
+                  "amount": "10.46",
+                  "date": "2026-05-02",
+                  "categoryName": "Domains",
+                  "status": "draft",
+                  "note": "Invoice IN-64069101.",
+                  "sourceMessageID": "19deb1b3a446937e"
+                },
+                {
+                  "filePath": "\(secondReceiptURL.path)",
+                  "merchant": "Cloudflare",
+                  "amount": "10.46",
+                  "date": "2026-05-02",
+                  "categoryName": "Domains",
+                  "status": "draft",
+                  "note": "Invoice IN-64068941.",
+                  "sourceMessageID": "19deb10ce45eebcd"
+                }
+              ]
+            }
+            """
+        )
+
+        let summary = try ReceiptBackfillImportService.importManifest(
+            at: manifestURL,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL
+        )
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        let expenses = try context.fetch(FetchDescriptor<Expense>())
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+
+        #expect(summary.importedCount == 2)
+        #expect(summary.duplicateCount == 0)
+        #expect(summary.failedCount == 0)
+        #expect(summary.totalAmount == 20.92)
+        #expect(expenses.count == 2)
+        #expect(attachments.count == 2)
+        #expect(Set(expenses.compactMap(\.receiptContentHash)).count == 2)
+    }
+
+    @Test("Receipt backfill imports invoice backups without creating expenses")
+    func receiptBackfillImportsInvoiceBackupsWithoutCreatingExpenses() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("ReceiptBackfillInvoiceBackup.store")
+        let vaultURL = directory.appendingPathComponent("ReceiptVault", isDirectory: true)
+        let receiptURL = try writeTemporaryFile(
+            named: "Receipt-2938-0656-6260.txt",
+            contents: """
+            OpenAI
+            Receipt
+            Date: 2026-06-05
+            Total: $108.88
+            """
+        )
+        let invoiceURL = try writeTemporaryFile(
+            named: "Invoice-E69950C1-0017.txt",
+            contents: """
+            OpenAI
+            Invoice
+            Date: 2026-06-05
+            Amount paid: $108.88
+            """
+        )
+        let manifestURL = try writeTemporaryFile(
+            named: "receipt-backfill-invoice-backup-manifest.json",
+            contents: """
+            {
+              "sourceName": "OpenAI ChatGPT billing PDF backfill 2026 YTD",
+              "items": [
+                {
+                  "filePath": "\(receiptURL.path)",
+                  "merchant": "OpenAI",
+                  "amount": "108.88",
+                  "date": "2026-06-05",
+                  "categoryName": "AI Tools",
+                  "status": "draft",
+                  "projectName": "ChatGPT Pro Subscription",
+                  "sourceMessageID": "openai-chatgpt-E69950C1-0017-receipt"
+                },
+                {
+                  "filePath": "\(invoiceURL.path)",
+                  "merchant": "OpenAI",
+                  "amount": "108.88",
+                  "date": "2026-06-05",
+                  "categoryName": "AI Tools",
+                  "status": "draft",
+                  "projectName": "ChatGPT Pro Subscription",
+                  "sourceMessageID": "openai-chatgpt-E69950C1-0017-invoice",
+                  "createExpense": false
+                }
+              ]
+            }
+            """
+        )
+
+        let summary = try ReceiptBackfillImportService.importManifest(
+            at: manifestURL,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL
+        )
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        let expenses = try context.fetch(FetchDescriptor<Expense>())
+        let attachments = try context.fetch(FetchDescriptor<ReceiptAttachment>())
+        let expense = try #require(expenses.first)
+        let receiptAttachment = try #require(attachments.first { $0.originalFilename == receiptURL.lastPathComponent })
+        let invoiceAttachment = try #require(attachments.first { $0.originalFilename == invoiceURL.lastPathComponent })
+
+        #expect(summary.importedCount == 1)
+        #expect(summary.duplicateCount == 1)
+        #expect(summary.failedCount == 0)
+        #expect(summary.totalAmount == 108.88)
+        #expect(expenses.count == 1)
+        #expect(attachments.count == 2)
+        #expect(expense.projectName == "ChatGPT Pro Subscription")
+        #expect(expense.receiptAttachmentID == receiptAttachment.id)
+        #expect(receiptAttachment.expenseID == expense.id)
+        #expect(invoiceAttachment.expenseID == nil)
+        #expect(invoiceAttachment.sourceMessageID == "openai-chatgpt-E69950C1-0017-invoice")
+        #expect(FileManager.default.fileExists(atPath: invoiceAttachment.localPath))
+    }
+
+    @Test("Receipt backfill can replace duplicate receipt attachment")
+    func receiptBackfillCanReplaceDuplicateReceiptAttachment() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("ReceiptBackfillReplaceDuplicate.store")
+        let vaultURL = directory.appendingPathComponent("ReceiptVault", isDirectory: true)
+        let oldReceiptURL = try writeTemporaryFile(
+            named: "openai-email.txt",
+            contents: "OpenAI email receipt"
+        )
+        let newReceiptURL = try writeTemporaryFile(
+            named: "Receipt-2680-6637-7818.txt",
+            contents: "OpenAI Stripe receipt with full payment details"
+        )
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        let existingExpense = Expense(
+            date: try makeUTCDate(year: 2026, month: 6, day: 2),
+            merchant: "OpenAI",
+            amount: 10.80,
+            categoryName: "AI Tools",
+            status: .draft,
+            source: .receiptDraft
+        )
+        context.insert(existingExpense)
+        let oldAttachment = try ReceiptVault.importReceipt(
+            at: oldReceiptURL,
+            context: context,
+            expense: existingExpense,
+            vaultDirectory: vaultURL
+        ).attachment
+        try context.save()
+
+        let manifestURL = try writeTemporaryFile(
+            named: "receipt-backfill-replace-duplicate-manifest.json",
+            contents: """
+            {
+              "sourceName": "OpenAI Platform billing PDF backfill",
+              "items": [
+                {
+                  "filePath": "\(newReceiptURL.path)",
+                  "merchant": "OpenAI",
+                  "amount": "10.80",
+                  "date": "2026-06-02",
+                  "categoryName": "AI Tools",
+                  "status": "draft",
+                  "sourceMessageID": "openai-platform-42283BBC-0002-receipt",
+                  "replaceDuplicateReceipt": true
+                }
+              ]
+            }
+            """
+        )
+
+        let summary = try ReceiptBackfillImportService.importManifest(
+            at: manifestURL,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL
+        )
+        let verificationContainer = try RemnantStore.makeContainer(storeURL: storeURL)
+        let verificationContext = verificationContainer.mainContext
+        let expenses = try verificationContext.fetch(FetchDescriptor<Expense>())
+        let attachments = try verificationContext.fetch(FetchDescriptor<ReceiptAttachment>())
+        let expense = try #require(expenses.first)
+        let oldAttachmentAfterImport = try #require(attachments.first { $0.id == oldAttachment.id })
+        let newAttachment = try #require(attachments.first { $0.originalFilename == newReceiptURL.lastPathComponent })
+
+        #expect(summary.importedCount == 0)
+        #expect(summary.duplicateCount == 1)
+        #expect(summary.failedCount == 0)
+        #expect(expenses.count == 1)
+        #expect(attachments.count == 2)
+        #expect(oldAttachmentAfterImport.expenseID == nil)
+        #expect(newAttachment.expenseID == expense.id)
+        #expect(expense.receiptAttachmentID == newAttachment.id)
+        #expect(expense.receiptFilename == newReceiptURL.lastPathComponent)
+        #expect(expense.receiptContentHash == newAttachment.contentHash)
     }
 
     @Test("Receipt vault does not relink duplicate attached receipt")
@@ -1190,6 +1694,111 @@ struct ExpenseLedgerTests {
         #expect(suggestion?.expense.id == sameDay.id)
     }
 
+    @Test("Audit package exports CSVs receipts and manifest")
+    func auditPackageExportsCSVsReceiptsAndManifest() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let directory = try makeTemporaryDirectory()
+        let vaultURL = directory.appendingPathComponent("Receipts", isDirectory: true)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        let sourceURL = try writeTemporaryFile(
+            named: "anthropic-receipt.txt",
+            contents: """
+            Anthropic, PBC
+            Receipt
+            Date paid June 11, 2026
+            Amount paid $108.88
+            """
+        )
+        let expense = Expense(
+            date: try makeUTCDate(year: 2026, month: 6, day: 11),
+            merchant: "Anthropic, PBC",
+            amount: 108.88,
+            categoryName: "AI Tools",
+            status: .reviewed
+        )
+        let category = ExpenseCategory(
+            name: "AI Tools",
+            taxBucket: "Office expense",
+            icon: "sparkles",
+            colorHex: "8B5CF6"
+        )
+        context.insert(expense)
+        context.insert(category)
+        let importResult = try ReceiptVault.importReceipt(
+            at: sourceURL,
+            context: context,
+            expense: expense,
+            vaultDirectory: vaultURL
+        )
+        try context.save()
+
+        let packageURL = directory.appendingPathComponent("audit.remnantaudit", isDirectory: true)
+        let summary = try AuditPackageService.createPackage(
+            at: packageURL,
+            expenses: [expense],
+            categories: [category],
+            attachments: [importResult.attachment],
+            vaultDirectory: vaultURL
+        )
+        let manifestData = try Data(contentsOf: packageURL.appendingPathComponent("manifest.json"))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let manifest = try decoder.decode(AuditPackageManifest.self, from: manifestData)
+        let receiptFiles = try FileManager.default.contentsOfDirectory(
+            at: packageURL.appendingPathComponent("Receipts", isDirectory: true),
+            includingPropertiesForKeys: nil
+        )
+
+        #expect(summary.expenseCount == 1)
+        #expect(summary.copiedReceiptCount == 1)
+        #expect(summary.missingReceiptCount == 0)
+        #expect(FileManager.default.fileExists(atPath: packageURL.appendingPathComponent("Reports/raw-expenses.csv").path))
+        #expect(FileManager.default.fileExists(atPath: packageURL.appendingPathComponent("Reports/tax-bucket-summary.csv").path))
+        #expect(receiptFiles.count == 1)
+        #expect(manifest.expenseCount == 1)
+        #expect(manifest.copiedReceiptCount == 1)
+        #expect(manifest.expenses.first?.receiptStatus == "attached")
+        #expect(manifest.expenses.first?.receiptExportPath?.hasPrefix("Receipts/") == true)
+        #expect(manifest.expenses.first?.taxBucket == "Office expense")
+    }
+
+    @Test("Audit package records expenses without receipt evidence")
+    func auditPackageRecordsExpensesWithoutReceiptEvidence() throws {
+        let directory = try makeTemporaryDirectory()
+        let packageURL = directory.appendingPathComponent("audit.remnantaudit", isDirectory: true)
+        let expense = Expense(
+            date: try makeUTCDate(year: 2026, month: 6, day: 1),
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "AI Tools"
+        )
+        let category = ExpenseCategory(
+            name: "AI Tools",
+            taxBucket: "Office expense",
+            icon: "sparkles",
+            colorHex: "8B5CF6"
+        )
+
+        let summary = try AuditPackageService.createPackage(
+            at: packageURL,
+            expenses: [expense],
+            categories: [category],
+            attachments: []
+        )
+        let manifestData = try Data(contentsOf: packageURL.appendingPathComponent("manifest.json"))
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let manifest = try decoder.decode(AuditPackageManifest.self, from: manifestData)
+
+        #expect(summary.expenseCount == 1)
+        #expect(summary.copiedReceiptCount == 0)
+        #expect(summary.missingReceiptCount == 1)
+        #expect(manifest.missingReceiptCount == 1)
+        #expect(manifest.expenses.first?.receiptStatus == "missing")
+        #expect(manifest.expenses.first?.receiptExportPath == nil)
+    }
+
     @Test("Backup integrity reports corrupt and missing receipts")
     func backupIntegrityReportsCorruptAndMissingReceipts() throws {
         let container = try makeExpenseContainer()
@@ -1333,6 +1942,49 @@ struct ExpenseLedgerTests {
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
+    }
+
+    @Test("Automatic backup creates package and respects interval")
+    func automaticBackupCreatesPackageAndRespectsInterval() throws {
+        let directory = try makeTemporaryDirectory()
+        let storeURL = directory.appendingPathComponent("AutomaticBackup.store")
+        let vaultURL = directory.appendingPathComponent("Receipts", isDirectory: true)
+        try FileManager.default.createDirectory(at: vaultURL, withIntermediateDirectories: true)
+        let container = try RemnantStore.makeContainer(storeURL: storeURL)
+        let context = container.mainContext
+        context.insert(Expense(merchant: "OpenAI", amount: 20))
+        try context.save()
+
+        let suiteName = "remnant-tests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        defaults.set(true, forKey: RemnantBackupService.automaticBackupEnabledKey)
+
+        let now = try makeUTCDate(year: 2026, month: 6, day: 1)
+        let result = try RemnantBackupService.runAutomaticBackupIfNeeded(
+            context: context,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL,
+            backupRootDirectory: directory,
+            defaults: defaults,
+            now: now
+        )
+        let created = try #require(result)
+        let skipped = try RemnantBackupService.runAutomaticBackupIfNeeded(
+            context: context,
+            storeURL: storeURL,
+            vaultDirectory: vaultURL,
+            backupRootDirectory: directory,
+            defaults: defaults,
+            now: now.addingTimeInterval(3_600)
+        )
+
+        #expect(FileManager.default.fileExists(atPath: created.backupURL.path))
+        #expect(created.report.issues.isEmpty)
+        #expect(defaults.double(forKey: RemnantBackupService.automaticBackupLastRunKey) == now.timeIntervalSince1970)
+        #expect(skipped == nil)
     }
 
     private func writeTemporaryCSV(_ csv: String) throws -> URL {

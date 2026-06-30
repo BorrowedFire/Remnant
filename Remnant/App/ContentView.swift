@@ -26,6 +26,16 @@ enum ExpenseSection: String, CaseIterable, Hashable, Identifiable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selectedSection: ExpenseSection = .dashboard
+    @State private var reviewInboxFilter = ExpenseReviewInboxFilter.all
+    @State private var expenseReviewFilter = ExpenseReviewFilter.needsReview
+    @State private var expenseSearchText = ""
+    @State private var expenseCategoryFilter: String?
+    @State private var reportTaxYear = Calendar.current.component(.year, from: Date())
+    @State private var reportDateRange = ReportDateRange.taxYear
+    @State private var reportCustomStartDate = Calendar.current.date(
+        from: DateComponents(year: Calendar.current.component(.year, from: Date()), month: 1, day: 1)
+    ) ?? Date()
+    @State private var reportCustomEndDate = Date()
 
     var body: some View {
         NavigationSplitView {
@@ -65,6 +75,8 @@ struct ContentView: View {
         .task {
             _ = try? RemnantBackupService.repairReceiptPaths(context: modelContext)
             try? ExpenseLedger.seedDefaultCategoriesIfNeeded(context: modelContext)
+            _ = try? ExpenseLedger.clearCompanyProjectAssignmentsIfNeeded(context: modelContext)
+            _ = try? RemnantBackupService.runAutomaticBackupIfNeeded(context: modelContext)
         }
     }
 
@@ -72,15 +84,34 @@ struct ContentView: View {
     private var detailView: some View {
         switch selectedSection {
         case .dashboard:
-            ExpenseDashboardView()
+            ExpenseDashboardView(
+                selectedSection: $selectedSection,
+                reviewInboxFilter: $reviewInboxFilter,
+                expenseReviewFilter: $expenseReviewFilter,
+                expenseSearchText: $expenseSearchText,
+                expenseCategoryFilter: $expenseCategoryFilter,
+                reportTaxYear: $reportTaxYear,
+                reportDateRange: $reportDateRange,
+                reportCustomStartDate: $reportCustomStartDate,
+                reportCustomEndDate: $reportCustomEndDate
+            )
         case .review:
-            ExpenseReviewInboxView()
+            ExpenseReviewInboxView(issueFilter: $reviewInboxFilter)
         case .expenses:
-            ExpenseListView()
+            ExpenseListView(
+                reviewFilter: $expenseReviewFilter,
+                searchText: $expenseSearchText,
+                categoryFilter: $expenseCategoryFilter
+            )
         case .imports:
             ImportCenterView()
         case .reports:
-            ReportsView()
+            ReportsView(
+                taxYear: $reportTaxYear,
+                dateRange: $reportDateRange,
+                customStartDate: $reportCustomStartDate,
+                customEndDate: $reportCustomEndDate
+            )
         case .settings:
             ExpenseSettingsView()
         }

@@ -13,6 +13,7 @@ struct EmailReceiptAttachmentCandidate: Equatable {
     let filename: String
     let data: Data
     let metadata: EmailReceiptSourceMetadata
+    var isInlineImageAsset = false
 }
 
 struct EmailReceiptImportSummary: Equatable {
@@ -108,13 +109,26 @@ enum EmailReceiptImportService {
         guard entity.hasHeaderBodySeparator else {
             throw EmailReceiptImportError.malformedMessage(url.lastPathComponent)
         }
+
+        if let bodyEvidence = bodyEvidenceCandidate(from: entity.bodyCandidates, sourceFilename: url.lastPathComponent),
+           entity.attachments.isEmpty || entity.attachments.allSatisfy(\.isInlineImageAsset) {
+            return ([bodyEvidence], entity.skippedCount)
+        }
+
         return (entity.attachments, entity.skippedCount)
     }
 
     private struct ParsedEntity {
         let attachments: [EmailReceiptAttachmentCandidate]
+        let bodyCandidates: [EmailReceiptBodyCandidate]
         let skippedCount: Int
         let hasHeaderBodySeparator: Bool
+    }
+
+    private struct EmailReceiptBodyCandidate {
+        let text: String
+        let isHTML: Bool
+        let metadata: EmailReceiptSourceMetadata
     }
 
     private struct ParsedHeaders {
@@ -131,7 +145,7 @@ enum EmailReceiptImportService {
         inheritedMetadata: EmailReceiptSourceMetadata? = nil
     ) throws -> ParsedEntity {
         guard let split = splitHeadersAndBody(rawEntity) else {
-            return ParsedEntity(attachments: [], skippedCount: 0, hasHeaderBodySeparator: false)
+            return ParsedEntity(attachments: [], bodyCandidates: [], skippedCount: 0, hasHeaderBodySeparator: false)
         }
 
         let headers = parseHeaders(split.headers)
@@ -148,27 +162,44 @@ enum EmailReceiptImportService {
            let boundary = contentType.parameters["boundary"] {
             let parts = splitMultipartBody(split.body, boundary: boundary)
             var attachments: [EmailReceiptAttachmentCandidate] = []
+            var bodyCandidates: [EmailReceiptBodyCandidate] = []
             var skippedCount = 0
 
             for part in parts {
                 let parsed = try parseEntity(part, sourceFilename: sourceFilename, inheritedMetadata: metadata)
                 attachments.append(contentsOf: parsed.attachments)
+                bodyCandidates.append(contentsOf: parsed.bodyCandidates)
                 skippedCount += parsed.skippedCount
             }
 
-            return ParsedEntity(attachments: attachments, skippedCount: skippedCount, hasHeaderBodySeparator: true)
+            return ParsedEntity(
+                attachments: attachments,
+                bodyCandidates: bodyCandidates,
+                skippedCount: skippedCount,
+                hasHeaderBodySeparator: true
+            )
         }
 
         guard let filename = attachmentFilename(headers: headers) else {
-            return ParsedEntity(attachments: [], skippedCount: 0, hasHeaderBodySeparator: true)
+            let bodyCandidates = bodyCandidate(
+                from: split.body,
+                headers: headers,
+                metadata: metadata
+            ).map { [$0] } ?? []
+            return ParsedEntity(
+                attachments: [],
+                bodyCandidates: bodyCandidates,
+                skippedCount: 0,
+                hasHeaderBodySeparator: true
+            )
         }
 
         guard isSupportedAttachment(filename) else {
-            return ParsedEntity(attachments: [], skippedCount: 1, hasHeaderBodySeparator: true)
+            return ParsedEntity(attachments: [], bodyCandidates: [], skippedCount: 1, hasHeaderBodySeparator: true)
         }
 
         guard let attachmentData = decodedBody(split.body, encoding: headers["content-transfer-encoding"]) else {
-            return ParsedEntity(attachments: [], skippedCount: 1, hasHeaderBodySeparator: true)
+            return ParsedEntity(attachments: [], bodyCandidates: [], skippedCount: 1, hasHeaderBodySeparator: true)
         }
 
         return ParsedEntity(
@@ -176,12 +207,189 @@ enum EmailReceiptImportService {
                 EmailReceiptAttachmentCandidate(
                     filename: safeFilename(filename),
                     data: attachmentData,
-                    metadata: metadata
+                    metadata: metadata,
+                    isInlineImageAsset: isInlineImageAsset(headers: headers)
                 )
             ],
+            bodyCandidates: [],
             skippedCount: 0,
             hasHeaderBodySeparator: true
         )
+    }
+
+    private static func bodyCandidate(
+        from body: String,
+        headers: ParsedHeaders,
+        metadata: EmailReceiptSourceMetadata
+    ) -> EmailReceiptBodyCandidate? {
+        let contentType = parsedHeaderValue(headers["content-type"] ?? "text/plain")
+        let normalizedContentType = contentType.value.lowercased()
+        guard normalizedContentType.hasPrefix("text/plain") || normalizedContentType.hasPrefix("text/html") else {
+            return nil
+        }
+        guard let bodyData = decodedBody(body, encoding: headers["content-transfer-encoding"]),
+              let bodyText = messageString(from: bodyData) else {
+            return nil
+        }
+
+        let normalizedText = normalizedContentType.hasPrefix("text/html")
+            ? plainText(fromHTML: bodyText)
+            : bodyText
+        guard !normalizedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        return EmailReceiptBodyCandidate(
+            text: normalizedText,
+            isHTML: normalizedContentType.hasPrefix("text/html"),
+            metadata: metadata
+        )
+    }
+
+    private static func bodyEvidenceCandidate(
+        from bodyCandidates: [EmailReceiptBodyCandidate],
+        sourceFilename: String
+    ) -> EmailReceiptAttachmentCandidate? {
+        let receiptBodies = bodyCandidates
+            .map { candidate in
+                (
+                    candidate: candidate,
+                    text: normalizedReceiptBody(candidate.text),
+                    score: bodyEvidenceScore(candidate.text, isHTML: candidate.isHTML)
+                )
+            }
+            .filter { isReceiptLikeBody($0.text) }
+            .sorted { lhs, rhs in
+                if lhs.score == rhs.score {
+                    return lhs.text.count > rhs.text.count
+                }
+                return lhs.score > rhs.score
+            }
+
+        guard let best = receiptBodies.first else { return nil }
+        let metadata = best.candidate.metadata
+        let evidenceText = emailEvidenceText(
+            body: best.text,
+            metadata: metadata,
+            sourceFilename: sourceFilename
+        )
+        guard let evidenceData = evidenceText.data(using: .utf8) else { return nil }
+
+        return EmailReceiptAttachmentCandidate(
+            filename: emailEvidenceFilename(metadata: metadata, sourceFilename: sourceFilename),
+            data: evidenceData,
+            metadata: metadata
+        )
+    }
+
+    private static func bodyEvidenceScore(_ text: String, isHTML: Bool) -> Int {
+        let lowercased = text.lowercased()
+        var score = isHTML ? 0 : 10
+        for term in ["receipt", "amount paid", "date paid", "payment method", "order number", "order confirmation", "invoice", "total"] {
+            if lowercased.contains(term) {
+                score += 5
+            }
+        }
+        return score
+    }
+
+    private static func isReceiptLikeBody(_ text: String) -> Bool {
+        let lowercased = text.lowercased()
+        let receiptTerms = [
+            "receipt",
+            "amount paid",
+            "date paid",
+            "payment method",
+            "order number",
+            "order confirmation",
+            "invoice",
+            "view full receipt"
+        ]
+        guard receiptTerms.contains(where: { lowercased.contains($0) }) else {
+            return false
+        }
+
+        return lowercased.range(
+            of: #"(?:[$€£]\s*)(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?|\btotal\s*:?\s*(?:[$€£]\s*)?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func emailEvidenceText(
+        body: String,
+        metadata: EmailReceiptSourceMetadata,
+        sourceFilename: String
+    ) -> String {
+        var lines = [
+            body,
+            "",
+            "--- Source Email ---",
+            "Source file: \(sourceFilename)"
+        ]
+
+        if let subject = metadata.subject {
+            lines.append("Subject: \(subject)")
+        }
+        if let sender = metadata.sender {
+            lines.append("From: \(sender)")
+        }
+        if let sentDate = metadata.sentDate {
+            lines.append("Date: \(evidenceDateFormatter.string(from: sentDate))")
+        }
+        if let messageID = metadata.messageID {
+            lines.append("Message-ID: \(messageID)")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func emailEvidenceFilename(
+        metadata: EmailReceiptSourceMetadata,
+        sourceFilename: String
+    ) -> String {
+        let subject = metadata.subject ?? (sourceFilename as NSString).deletingPathExtension
+        let stem = safeEvidenceFilenameStem(subject)
+        let datePrefix = metadata.sentDate.map { filenameDateFormatter.string(from: $0) }
+        return ([datePrefix, stem, "email-receipt"].compactMap(\.self).joined(separator: "-") + ".txt")
+    }
+
+    private static func safeEvidenceFilenameStem(_ value: String) -> String {
+        let ascii = value.folding(options: .diacriticInsensitive, locale: Locale(identifier: "en_US_POSIX"))
+        let cleaned = ascii
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let stem = cleaned.isEmpty ? "email" : cleaned
+        return String(stem.prefix(72)).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private static func normalizedReceiptBody(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func plainText(fromHTML html: String) -> String {
+        var text = html
+        text = text.replacingOccurrences(of: #"(?is)<(script|style).*?</\1>"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"(?i)</p>|</div>|</tr>|</li>"#, with: "\n", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+        return decodeHTMLEntities(text)
+            .replacingOccurrences(of: #"[ \t]{2,}"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\n[ \t]+"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func decodeHTMLEntities(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
     }
 
     private static func splitHeadersAndBody(_ rawEntity: String) -> (headers: String, body: String)? {
@@ -298,6 +506,17 @@ enum EmailReceiptImportService {
         }
 
         return nil
+    }
+
+    private static func isInlineImageAsset(headers: ParsedHeaders) -> Bool {
+        let contentType = parsedHeaderValue(headers["content-type"] ?? "").value.lowercased()
+        guard contentType.hasPrefix("image/") else { return false }
+
+        if let disposition = headers["content-disposition"] {
+            return parsedHeaderValue(disposition).value.lowercased() == "inline"
+        }
+
+        return headers["content-id"] != nil
     }
 
     private static func decodedBody(_ body: String, encoding: String?) -> Data? {
@@ -443,6 +662,24 @@ enum EmailReceiptImportService {
         if attachment.sourceMessageID == nil {
             attachment.sourceMessageID = metadata.messageID
         }
+    }
+
+    private static var evidenceDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss 'UTC'"
+        return formatter
+    }
+
+    private static var filenameDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
     }
 
     private static func messageString(from data: Data) -> String? {

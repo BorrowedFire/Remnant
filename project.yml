@@ -46,6 +46,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.borrowedfire.remnant
         INFOPLIST_FILE: Remnant/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_NAME: Remnant
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: 1

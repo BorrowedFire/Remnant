@@ -8,11 +8,22 @@ enum RemnantMain {
 
     @MainActor
     static func main() {
+        if CommandLine.arguments.contains("--import-receipts-manifest") {
+            do {
+                try ReceiptBackfillImportService.runFromCommandLine(arguments: CommandLine.arguments)
+                exit(0)
+            } catch {
+                fputs("Receipt import failed: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+        }
+
         let app = NSApplication.shared
         let appDelegate = RemnantAppDelegate()
         delegate = appDelegate
         app.delegate = appDelegate
         app.setActivationPolicy(.regular)
+        app.setRemnantApplicationIcon()
         appDelegate.showMainWindow()
 
         if CommandLine.arguments.contains("--verify-window") {
@@ -21,11 +32,27 @@ enum RemnantMain {
                 fputs("Remnant did not create a visible main window.\n", stderr)
                 exit(1)
             }
+            if app.applicationIconImage == nil {
+                fputs("Remnant did not load the bundled app icon.\n", stderr)
+                exit(1)
+            }
             fputs("Remnant window verified: \(visibleWindowCount)\n", stdout)
+            fputs("Remnant app icon verified.\n", stdout)
             exit(0)
         }
 
         app.run()
+    }
+}
+
+private extension NSApplication {
+    func setRemnantApplicationIcon() {
+        guard let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+              let image = NSImage(contentsOf: iconURL) else {
+            return
+        }
+
+        applicationIconImage = image
     }
 }
 
