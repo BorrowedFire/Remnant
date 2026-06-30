@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -8,6 +9,18 @@ struct ExpenseDashboardView: View {
     private var expenses: [Expense]
     @Query(sort: [SortDescriptor(\ReceiptAttachment.importedAt, order: .reverse)])
     private var receiptAttachments: [ReceiptAttachment]
+
+    @Binding var selectedSection: ExpenseSection
+    @Binding var reviewInboxFilter: ExpenseReviewInboxFilter
+    @Binding var expenseReviewFilter: ExpenseReviewFilter
+    @Binding var expenseSearchText: String
+    @Binding var reportTaxYear: Int
+    @Binding var reportDateRange: ReportDateRange
+    @Binding var reportCustomStartDate: Date
+    @Binding var reportCustomEndDate: Date
+
+    @State private var editingExpense: Expense?
+    @State private var selectedMonthBreakdown: MonthlySpendPoint?
 
     private var monthInterval: DateInterval {
         ExpenseLedger.monthInterval(containing: Date())
@@ -21,8 +34,21 @@ struct ExpenseDashboardView: View {
         ExpenseLedger.reviewInboxExpenses(in: activeExpenses)
     }
 
+    private var monthTotal: Decimal {
+        ExpenseLedger.totalSpent(in: activeExpenses, for: monthInterval)
+    }
+
+    private var yearToDateTotal: Decimal {
+        let interval = ExpenseLedger.yearInterval(Calendar.current.component(.year, from: Date()))
+        return ExpenseLedger.totalSpent(in: activeExpenses, for: interval)
+    }
+
     private var unmatchedReceiptCount: Int {
         receiptAttachments.filter { $0.expenseID == nil }.count
+    }
+
+    private var matchedReceiptCount: Int {
+        receiptAttachments.count - unmatchedReceiptCount
     }
 
     var body: some View {
@@ -30,119 +56,175 @@ struct ExpenseDashboardView: View {
             VStack(alignment: .leading, spacing: Spacing.xl) {
                 dashboardHeader
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: Spacing.md)], spacing: Spacing.md) {
-                    DashboardMetric(
-                        title: "This Month",
-                        value: ExpenseLedger.totalSpent(in: activeExpenses, for: monthInterval).currencyFormatted,
-                        subtitle: "Local expenses",
-                        systemImage: "calendar",
-                        tint: .blue
-                    )
-                    DashboardMetric(
-                        title: "Need Review",
-                        value: "\(reviewInboxExpenses.count)",
-                        subtitle: "Cleanup issues",
-                        systemImage: "checklist",
-                        tint: .orange
-                    )
-                    DashboardMetric(
-                        title: "Missing Receipts",
-                        value: "\(ExpenseLedger.expensesMissingReceipts(in: activeExpenses).count)",
-                        subtitle: "Attach before tax review",
-                        systemImage: "doc.badge.clock",
-                        tint: .red
-                    )
-                    DashboardMetric(
-                        title: "Receipt Inbox",
-                        value: "\(unmatchedReceiptCount)",
-                        subtitle: "Waiting to match",
-                        systemImage: "tray.full",
-                        tint: .green
-                    )
-                }
+                overviewMetrics
 
-                HStack(alignment: .top, spacing: Spacing.xl) {
-                    VStack(alignment: .leading, spacing: Spacing.lg) {
-                        DashboardPanel(title: "Review Queue") {
-                            DashboardQueueRow(
-                                title: "Imported drafts",
-                                value: "\(reviewIssueCount(.importedDraft))",
-                                systemImage: "tray.and.arrow.down"
-                            )
-                            DashboardQueueRow(
-                                title: "Missing receipts",
-                                value: "\(reviewIssueCount(.missingReceipt))",
-                                systemImage: "doc.badge.clock"
-                            )
-                            DashboardQueueRow(
-                                title: "Uncategorized",
-                                value: "\(reviewIssueCount(.uncategorized))",
-                                systemImage: "questionmark.folder"
-                            )
-                            DashboardQueueRow(
-                                title: "Duplicate candidates",
-                                value: "\(reviewIssueCount(.duplicateCandidate))",
-                                systemImage: "doc.on.doc"
-                            )
-                        }
-
-                        DashboardPanel(title: "Receipt Vault") {
-                            if receiptAttachments.isEmpty {
-                                Text("Downloaded receipts appear here after local import.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(receiptAttachments.prefix(4)) { receipt in
-                                    ReceiptInboxRow(receipt: receipt)
-                                }
-                            }
-                        }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: Spacing.xl) {
+                        priorityColumn
+                            .frame(width: 340)
+                        insightsColumn
+                            .frame(minWidth: 420)
                     }
-                    .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
 
                     VStack(alignment: .leading, spacing: Spacing.lg) {
-                        DashboardPanel(title: "Expense Flow", subtitle: "Last 12 months") {
-                            MonthlySpendChart(points: monthlySpend)
-                                .frame(height: 240)
-                        }
-
-                        DashboardPanel(title: "Category Spend", subtitle: "Current tax year") {
-                            if categorySpend.isEmpty {
-                                Text("Categorized expenses will appear after import or manual entry.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(categorySpend.prefix(6)) { item in
-                                    CategorySpendRow(item: item, maxAmount: categorySpend.first?.amount ?? 0)
-                                }
-                            }
-                        }
-
-                        DashboardPanel(title: "Recent Expenses") {
-                            if activeExpenses.isEmpty {
-                                Text("Add an expense or import a Wave CSV to start replacing Wave.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(activeExpenses.prefix(6)) { expense in
-                                    ExpenseSummaryRow(expense: expense)
-                                }
-                            }
-                        }
+                        priorityColumn
+                        insightsColumn
                     }
                 }
             }
             .padding(24)
+            .frame(maxWidth: 1120, alignment: .leading)
+        }
+        .sheet(item: $editingExpense) { expense in
+            ExpenseFormView(expense: expense)
+                .frame(width: 660)
+        }
+        .sheet(item: $selectedMonthBreakdown) { point in
+            MonthlySpendBreakdownView(point: point, expenses: activeExpenses)
+                .frame(width: 640, height: 560)
         }
     }
 
     private var dashboardHeader: some View {
         HStack(alignment: .center) {
-            header("Dashboard", subtitle: "Expense tracking for your business. Data stays on this Mac.")
+            header("Dashboard", subtitle: "Local expense tracking for tax review and receipt evidence.")
             Spacer()
-            Text("Expense-only")
+            Text("Local-only ledger")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.blue)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.10), in: RoundedRectangle(cornerRadius: CornerRadius.small))
+                .background(.quaternary, in: Capsule())
+        }
+    }
+
+    private var overviewMetrics: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 170, maximum: 260), spacing: Spacing.md)],
+            alignment: .leading,
+            spacing: Spacing.md
+        ) {
+            DashboardMetric(
+                title: "This Month",
+                value: monthTotal.currencyFormatted,
+                subtitle: "Cash expenses",
+                systemImage: "calendar",
+                tint: .blue,
+                action: openCurrentMonthReport
+            )
+            DashboardMetric(
+                title: "Year to Date",
+                value: yearToDateTotal.currencyFormatted,
+                subtitle: "\(activeExpenses.count) local entries",
+                systemImage: "sum",
+                tint: .green,
+                action: openCurrentTaxYearReport
+            )
+            DashboardMetric(
+                title: "Needs Review",
+                value: "\(reviewInboxExpenses.count)",
+                subtitle: "Drafts and exceptions",
+                systemImage: "checklist",
+                tint: .orange,
+                action: { openReview(.all) }
+            )
+            DashboardMetric(
+                title: "Receipts",
+                value: "\(matchedReceiptCount)/\(receiptAttachments.count)",
+                subtitle: unmatchedReceiptCount == 0 ? "All matched" : "\(unmatchedReceiptCount) unmatched",
+                systemImage: "doc.text.magnifyingglass",
+                tint: unmatchedReceiptCount == 0 ? .green : .orange,
+                action: openImports
+            )
+        }
+    }
+
+    private var priorityColumn: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            DashboardPanel(title: "Review Work", actionTitle: "\(reviewInboxExpenses.count) open", action: { openReview(.all) }) {
+                DashboardQueueRow(
+                    title: "Imported drafts",
+                    subtitle: "Classify and mark reviewed",
+                    value: "\(reviewIssueCount(.importedDraft))",
+                    systemImage: "tray.and.arrow.down",
+                    tint: .blue,
+                    action: { openReview(.importedDraft) }
+                )
+                DashboardQueueRow(
+                    title: "Duplicate candidates",
+                    subtitle: "Confirm same-charge matches",
+                    value: "\(reviewIssueCount(.duplicateCandidate))",
+                    systemImage: "doc.on.doc",
+                    tint: .orange,
+                    action: { openReview(.duplicateCandidate) }
+                )
+                DashboardQueueRow(
+                    title: "Missing receipts",
+                    subtitle: "Needs evidence before export",
+                    value: "\(reviewIssueCount(.missingReceipt))",
+                    systemImage: "doc.badge.clock",
+                    tint: .red,
+                    action: { openReview(.missingReceipt) }
+                )
+                DashboardQueueRow(
+                    title: "Uncategorized",
+                    subtitle: "Missing tax bucket",
+                    value: "\(reviewIssueCount(.uncategorized))",
+                    systemImage: "questionmark.folder",
+                    tint: .purple,
+                    action: { openReview(.uncategorized) }
+                )
+            }
+
+            DashboardPanel(title: "Receipt Vault", actionTitle: "\(receiptAttachments.count) stored", action: openImports) {
+                if receiptAttachments.isEmpty {
+                    Text("Imported receipt files appear here after local import.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(receiptAttachments.prefix(5)) { receipt in
+                        ReceiptInboxRow(receipt: receipt, action: receiptFileExists(receipt) ? {
+                            openReceiptFile(receipt)
+                        } : nil)
+                    }
+                }
+            }
+        }
+    }
+
+    private var insightsColumn: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            DashboardPanel(title: "Expense Flow", actionTitle: "Open reports", action: openCurrentTaxYearReport) {
+                MonthlySpendChart(points: monthlySpend) { point in
+                    selectedMonthBreakdown = point
+                }
+                    .frame(height: 220)
+            }
+
+            DashboardPanel(title: "Category Spend", actionTitle: "Open expenses", action: { openExpenses(search: "") }) {
+                if categorySpend.isEmpty {
+                    Text("Categorized expenses will appear after import or manual entry.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(categorySpend.prefix(6)) { item in
+                        CategorySpendRow(item: item, maxAmount: categorySpend.first?.amount ?? 0) {
+                            openExpenses(search: item.name)
+                        }
+                    }
+                }
+            }
+
+            DashboardPanel(title: "Recent Expenses", actionTitle: "Open all", action: { openExpenses(search: "") }) {
+                if activeExpenses.isEmpty {
+                    Text("Add an expense or import a local CSV to start replacing Wave.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(activeExpenses.prefix(6)) { expense in
+                        ExpenseSummaryRow(expense: expense) {
+                            editingExpense = expense
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -161,6 +243,7 @@ struct ExpenseDashboardView: View {
             return MonthlySpendPoint(
                 id: "\(start.timeIntervalSince1970)",
                 label: start.formatted(.dateTime.month(.abbreviated)),
+                interval: interval,
                 amount: total
             )
         }
@@ -168,6 +251,35 @@ struct ExpenseDashboardView: View {
 
     private func reviewIssueCount(_ issue: ExpenseReviewIssue) -> Int {
         ExpenseLedger.expenses(reviewInboxExpenses, matchingReviewIssue: issue, allExpenses: activeExpenses).count
+    }
+
+    private func openReview(_ filter: ExpenseReviewInboxFilter) {
+        reviewInboxFilter = filter
+        selectedSection = .review
+    }
+
+    private func openExpenses(search: String) {
+        expenseReviewFilter = .all
+        expenseSearchText = search
+        selectedSection = .expenses
+    }
+
+    private func openImports() {
+        selectedSection = .imports
+    }
+
+    private func openCurrentTaxYearReport() {
+        reportTaxYear = Calendar.current.component(.year, from: Date())
+        reportDateRange = .taxYear
+        selectedSection = .reports
+    }
+
+    private func openCurrentMonthReport() {
+        let interval = monthInterval
+        reportDateRange = .custom
+        reportCustomStartDate = interval.start
+        reportCustomEndDate = Calendar.current.date(byAdding: .day, value: -1, to: interval.end) ?? interval.start
+        selectedSection = .reports
     }
 
     private var categorySpend: [CategorySpendItem] {
@@ -193,25 +305,48 @@ private struct DashboardMetric: View {
     let subtitle: String
     let systemImage: String
     let tint: Color
+    var action: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack {
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(alignment: .center, spacing: Spacing.sm) {
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 18)
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
                 Spacer()
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
             Text(value)
                 .font(.title2.monospacedDigit().weight(.semibold))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.medium))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
-        .padding(14)
+        .padding(16)
+        .frame(minHeight: 104, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.background, in: RoundedRectangle(cornerRadius: CornerRadius.small))
         .overlay {
@@ -221,25 +356,68 @@ private struct DashboardMetric: View {
     }
 }
 
+private struct ActionMetric: View {
+    let title: String
+    let value: String
+    var isSelected = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                HStack(spacing: Spacing.xs) {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: Spacing.sm)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                Text(value)
+                    .font(.title2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .padding(14)
+            .frame(minWidth: 132, alignment: .leading)
+            .background(isSelected ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: CornerRadius.small))
+            .overlay {
+                RoundedRectangle(cornerRadius: CornerRadius.small)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.45) : Color.clear)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct DashboardPanel<Content: View>: View {
     let title: String
     var subtitle: String? = nil
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.headline)
                 Spacer()
-                if let subtitle {
+                if let action, let actionTitle {
+                    Button(action: action) {
+                        Label(actionTitle, systemImage: "chevron.right")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .font(.caption.weight(.medium))
+                    .buttonStyle(.borderless)
+                } else if let subtitle {
                     Text(subtitle)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            VStack(alignment: .leading, spacing: Spacing.sm) {
+            VStack(alignment: .leading, spacing: Spacing.md) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -255,73 +433,212 @@ private struct DashboardPanel<Content: View>: View {
 
 private struct DashboardQueueRow: View {
     let title: String
+    let subtitle: String
     let value: String
     let systemImage: String
+    let tint: Color
+    var action: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: Spacing.sm) {
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        HStack(alignment: .center, spacing: Spacing.md) {
             Image(systemName: systemImage)
-                .foregroundStyle(.blue)
-                .frame(width: 22)
-            Text(title)
+                .foregroundStyle(tint)
+                .font(.body.weight(.semibold))
+                .frame(width: 22, height: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             Spacer()
             Text(value)
-                .font(.body.monospacedDigit().weight(.semibold))
+                .font(.title3.monospacedDigit().weight(.semibold))
+                .frame(minWidth: 34, alignment: .trailing)
+            if action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }
 
 private struct MonthlySpendPoint: Identifiable {
     let id: String
     let label: String
+    let interval: DateInterval
     let amount: Decimal
 }
 
 private struct MonthlySpendChart: View {
     let points: [MonthlySpendPoint]
+    var onSelectMonth: ((MonthlySpendPoint) -> Void)?
 
     private var maxAmount: Decimal {
         points.map(\.amount).max() ?? 0
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.sm) {
+        VStack(alignment: .leading, spacing: Spacing.md) {
             GeometryReader { proxy in
-                HStack(alignment: .bottom, spacing: 8) {
-                    ForEach(points) { point in
-                        VStack(spacing: 6) {
-                            ZStack(alignment: .bottom) {
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.gray.opacity(0.12))
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(Color.green)
-                                    .frame(height: max(4, proxy.size.height * heightRatio(for: point.amount)))
-                            }
-                            .frame(maxWidth: .infinity)
+                let legendHeight: CGFloat = 22
+                let labelHeight: CGFloat = 16
+                let barHeight = max(120, proxy.size.height - legendHeight - labelHeight - Spacing.lg)
 
-                            Text(point.label)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    HStack(alignment: .bottom, spacing: 7) {
+                        ForEach(points.indices, id: \.self) { index in
+                            let point = points[index]
+                            Button {
+                                if point.amount > 0 {
+                                    onSelectMonth?(point)
+                                }
+                            } label: {
+                                VStack(spacing: 6) {
+                                    ZStack(alignment: .bottom) {
+                                        RoundedRectangle(cornerRadius: 3)
+                                            .fill(Color.secondary.opacity(0.10))
+                                        if point.amount > 0 {
+                                            RoundedRectangle(cornerRadius: 3)
+                                                .fill(Color.green)
+                                                .frame(height: renderedBarHeight(for: point.amount, in: barHeight))
+                                        }
+                                    }
+                                    .frame(height: barHeight)
+                                    .frame(maxWidth: .infinity)
+
+                                    Text(label(for: index, point: point))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .frame(height: labelHeight)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                            .help(point.amount > 0 ? "\(point.label): \(point.amount.currencyFormatted)" : "\(point.label): no expenses")
                         }
                     }
-                }
-            }
 
-            HStack(spacing: Spacing.md) {
-                Label("Expense", systemImage: "square.fill")
-                    .foregroundStyle(.green)
-                Text("Highest month \(maxAmount.currencyFormatted)")
-                    .foregroundStyle(.secondary)
+                    HStack(spacing: Spacing.md) {
+                        Label("Expense", systemImage: "square.fill")
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Text("Peak \(maxAmount.currencyFormatted)")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption)
+                    .frame(height: legendHeight)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             }
-            .font(.caption)
         }
+    }
+
+    private func label(for index: Int, point: MonthlySpendPoint) -> String {
+        if index == points.count - 1 || index % 2 == 0 {
+            return point.label
+        }
+        return ""
+    }
+
+    private func renderedBarHeight(for amount: Decimal, in availableHeight: CGFloat) -> CGFloat {
+        guard amount > 0 else { return 0 }
+        return max(3, availableHeight * heightRatio(for: amount))
     }
 
     private func heightRatio(for amount: Decimal) -> CGFloat {
         let maxDouble = NSDecimalNumber(decimal: maxAmount).doubleValue
         guard maxDouble > 0 else { return 0 }
         return CGFloat(NSDecimalNumber(decimal: amount).doubleValue / maxDouble)
+    }
+}
+
+private struct MonthlySpendBreakdownView: View {
+    let point: MonthlySpendPoint
+    let expenses: [Expense]
+
+    private var monthExpenses: [Expense] {
+        expenses
+            .filter { point.interval.contains($0.date) && $0.status != .ignored }
+            .sorted { lhs, rhs in
+                if lhs.amount == rhs.amount {
+                    return lhs.date > rhs.date
+                }
+                return lhs.amount > rhs.amount
+            }
+    }
+
+    private var categoryRows: [CategorySpendItem] {
+        Dictionary(grouping: monthExpenses) { expense in
+            expense.categoryName ?? "Uncategorized"
+        }
+        .map { name, expenses in
+            CategorySpendItem(
+                id: name,
+                name: name,
+                amount: expenses.reduce(Decimal(0)) { $0 + $1.amount }
+            )
+        }
+        .sorted { $0.amount > $1.amount }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("\(monthTitle) Spend")
+                    .font(.title2.weight(.semibold))
+                Text("\(monthExpenses.count) expenses · \(point.amount.currencyFormatted)")
+                    .foregroundStyle(.secondary)
+            }
+
+            if categoryRows.isEmpty {
+                emptyState("No expenses", "This month does not have expenses in the local ledger.")
+            } else {
+                VStack(alignment: .leading, spacing: Spacing.md) {
+                    Text("Category Breakdown")
+                        .font(.headline)
+                    ForEach(categoryRows) { item in
+                        CategorySpendRow(item: item, maxAmount: categoryRows.first?.amount ?? 0)
+                    }
+                }
+
+                Divider()
+
+                Text("Expenses")
+                    .font(.headline)
+                List(monthExpenses) { expense in
+                    ExpenseSummaryRow(expense: expense)
+                }
+                .frame(minHeight: 220)
+            }
+        }
+        .padding(24)
+    }
+
+    private var monthTitle: String {
+        point.interval.start.formatted(.dateTime.month(.wide).year())
     }
 }
 
@@ -334,18 +651,38 @@ private struct CategorySpendItem: Identifiable {
 private struct CategorySpendRow: View {
     let item: CategorySpendItem
     let maxAmount: Decimal
+    var action: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack {
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(item.name)
+                    .lineLimit(1)
                 Spacer()
                 Text(item.amount.currencyFormatted)
                     .monospacedDigit()
+                    .lineLimit(1)
+                if action != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
             GeometryReader { proxy in
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.gray.opacity(0.12))
+                    .fill(Color.secondary.opacity(0.12))
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 3)
                             .fill(Color.blue)
@@ -355,6 +692,7 @@ private struct CategorySpendRow: View {
             .frame(height: 6)
         }
         .font(.caption)
+        .contentShape(Rectangle())
     }
 
     private var widthRatio: CGFloat {
@@ -366,8 +704,21 @@ private struct CategorySpendRow: View {
 
 private struct ReceiptInboxRow: View {
     let receipt: ReceiptAttachment
+    var action: (() -> Void)?
 
     var body: some View {
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(spacing: Spacing.sm) {
             Image(systemName: receipt.expenseID == nil ? "tray" : "checkmark.circle")
                 .foregroundStyle(receipt.expenseID == nil ? .orange : .green)
@@ -386,7 +737,13 @@ private struct ReceiptInboxRow: View {
                 Text(amount.currencyFormatted)
                     .font(.caption.monospacedDigit())
             }
+            if action != nil {
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .contentShape(Rectangle())
     }
 
     private var detailText: String {
@@ -400,8 +757,21 @@ private struct ReceiptInboxRow: View {
 
 private struct ExpenseSummaryRow: View {
     let expense: Expense
+    var action: (() -> Void)?
 
     var body: some View {
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(spacing: Spacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(expense.merchant)
@@ -415,7 +785,13 @@ private struct ExpenseSummaryRow: View {
             Spacer()
             Text(expense.amount.currencyFormatted)
                 .monospacedDigit()
+            if action != nil {
+                Image(systemName: "pencil")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .contentShape(Rectangle())
     }
 }
 
@@ -426,10 +802,14 @@ struct ExpenseReviewInboxView: View {
     @Query(sort: [SortDescriptor(\ExpenseCategory.sortOrder)])
     private var categories: [ExpenseCategory]
 
-    @State private var issueFilter = ExpenseReviewInboxFilter.all
+    @Binding var issueFilter: ExpenseReviewInboxFilter
     @State private var selectedCategory = "Uncategorized"
     @State private var selectedExpenseIDs = Set<UUID>()
     @State private var editingExpense: Expense?
+
+    init(issueFilter: Binding<ExpenseReviewInboxFilter>) {
+        _issueFilter = issueFilter
+    }
 
     private var inboxExpenses: [Expense] {
         ExpenseLedger.reviewInboxExpenses(in: expenses)
@@ -452,12 +832,22 @@ struct ExpenseReviewInboxView: View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             header("Review Inbox", subtitle: "Imported cleanup and ledger exceptions.")
 
-            HStack(spacing: Spacing.lg) {
-                metric("Inbox", "\(inboxExpenses.count)")
-                metric("Imported Drafts", "\(count(.importedDraft))")
-                metric("Missing Receipts", "\(count(.missingReceipt))")
-                metric("Duplicates", "\(count(.duplicateCandidate))")
-                metric("Uncategorized", "\(count(.uncategorized))")
+            HStack(spacing: Spacing.md) {
+                ActionMetric(title: "Inbox", value: "\(inboxExpenses.count)", isSelected: issueFilter == .all) {
+                    issueFilter = .all
+                }
+                ActionMetric(title: "Imported Drafts", value: "\(count(.importedDraft))", isSelected: issueFilter == .importedDraft) {
+                    issueFilter = .importedDraft
+                }
+                ActionMetric(title: "Missing Receipts", value: "\(count(.missingReceipt))", isSelected: issueFilter == .missingReceipt) {
+                    issueFilter = .missingReceipt
+                }
+                ActionMetric(title: "Duplicates", value: "\(count(.duplicateCandidate))", isSelected: issueFilter == .duplicateCandidate) {
+                    issueFilter = .duplicateCandidate
+                }
+                ActionMetric(title: "Uncategorized", value: "\(count(.uncategorized))", isSelected: issueFilter == .uncategorized) {
+                    issueFilter = .uncategorized
+                }
             }
 
             HStack(spacing: Spacing.md) {
@@ -510,7 +900,13 @@ struct ExpenseReviewInboxView: View {
                     ForEach(filteredExpenses) { expense in
                         ExpenseReviewInboxRow(
                             expense: expense,
-                            issues: ExpenseLedger.reviewIssues(for: expense, allExpenses: expenses)
+                            issues: ExpenseLedger.reviewIssues(for: expense, allExpenses: expenses),
+                            onEdit: {
+                                editingExpense = expense
+                            },
+                            onAttachReceipt: {
+                                editingExpense = expense
+                            }
                         )
                         .tag(expense.id)
                         .onTapGesture(count: 2) {
@@ -546,7 +942,7 @@ struct ExpenseReviewInboxView: View {
         .padding(24)
         .sheet(item: $editingExpense) { expense in
             ExpenseFormView(expense: expense)
-                .frame(width: 560)
+                .frame(width: 660)
         }
     }
 
@@ -576,7 +972,7 @@ struct ExpenseReviewInboxView: View {
     }
 }
 
-private enum ExpenseReviewInboxFilter: String, CaseIterable, Identifiable {
+enum ExpenseReviewInboxFilter: String, CaseIterable, Identifiable {
     case all
     case importedDraft
     case missingReceipt
@@ -618,6 +1014,8 @@ private enum ExpenseReviewInboxFilter: String, CaseIterable, Identifiable {
 private struct ExpenseReviewInboxRow: View {
     let expense: Expense
     let issues: Set<ExpenseReviewIssue>
+    let onEdit: () -> Void
+    let onAttachReceipt: () -> Void
 
     var body: some View {
         HStack(spacing: Spacing.lg) {
@@ -644,6 +1042,18 @@ private struct ExpenseReviewInboxRow: View {
             Text(expense.amount.currencyFormatted)
                 .monospacedDigit()
                 .frame(minWidth: 96, alignment: .trailing)
+            Button(action: onAttachReceipt) {
+                Label("Attach Receipt", systemImage: "doc.badge.plus")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .help("Attach receipt")
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .help("Edit expense")
         }
         .padding(.vertical, 4)
     }
@@ -658,17 +1068,24 @@ struct ExpenseListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
     private var expenses: [Expense]
+    @Query(sort: [SortDescriptor(\ReceiptAttachment.importedAt, order: .reverse)])
+    private var receiptAttachments: [ReceiptAttachment]
     @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
     private var dimensions: [BusinessDimension]
 
-    @State private var searchText = ""
-    @State private var reviewFilter = ExpenseReviewFilter.needsReview
+    @Binding var reviewFilter: ExpenseReviewFilter
+    @Binding var searchText: String
     @State private var followUpFilter = ExpenseFollowUpFilter.all
     @State private var dimensionFilterKind: BusinessDimensionKind?
     @State private var dimensionFilterValue = ""
     @State private var isShowingForm = false
     @State private var editingExpense: Expense?
     @State private var selectedExpenseIDs = Set<UUID>()
+
+    init(reviewFilter: Binding<ExpenseReviewFilter>, searchText: Binding<String>) {
+        _reviewFilter = reviewFilter
+        _searchText = searchText
+    }
 
     private var filteredExpenses: [Expense] {
         let reviewFiltered = expenses.filter { reviewFilter.includes($0, allExpenses: expenses) }
@@ -758,14 +1175,29 @@ struct ExpenseListView: View {
             } else {
                 List(selection: $selectedExpenseIDs) {
                     ForEach(filteredExpenses) { expense in
-                        ExpenseRow(expense: expense)
-                            .tag(expense.id)
-                            .onTapGesture(count: 2) {
+                        let receipt = attachment(for: expense)
+                        ExpenseRow(
+                            expense: expense,
+                            receipt: receipt,
+                            onEdit: {
                                 editingExpense = expense
+                            },
+                            onOpenReceipt: receipt.map { attachment in
+                                { openReceiptFile(attachment) }
                             }
+                        )
+                            .tag(expense.id)
                             .contextMenu {
                                 Button("Edit", systemImage: "pencil") {
                                     editingExpense = expense
+                                }
+                                if let receipt {
+                                    Button("Open Receipt", systemImage: "arrow.up.forward.square") {
+                                        openReceiptFile(receipt)
+                                    }
+                                    Button("Show Receipt in Finder", systemImage: "folder") {
+                                        revealReceiptFile(receipt)
+                                    }
                                 }
                                 Divider()
                                 statusButton("Mark Reviewed", systemImage: "checkmark.circle", status: .reviewed, expenses: [expense])
@@ -800,6 +1232,13 @@ struct ExpenseListView: View {
                 ToolbarItemGroup(placement: .primaryAction) {
                     Text("\(selectedExpenseIDs.count) selected")
                         .foregroundStyle(.secondary)
+                    if selectedExpenses.count == 1, let expense = selectedExpenses.first {
+                        Button {
+                            editingExpense = expense
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                    }
                     Button {
                         updateSelectedStatus(.reviewed)
                     } label: {
@@ -831,11 +1270,11 @@ struct ExpenseListView: View {
         }
         .sheet(isPresented: $isShowingForm) {
             ExpenseFormView()
-                .frame(width: 520)
+                .frame(width: 660)
         }
         .sheet(item: $editingExpense) { expense in
             ExpenseFormView(expense: expense)
-                .frame(width: 560)
+                .frame(width: 660)
         }
     }
 
@@ -853,6 +1292,27 @@ struct ExpenseListView: View {
             }
         }
         return values.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private func attachment(for expense: Expense) -> ReceiptAttachment? {
+        if let receiptAttachmentID = expense.receiptAttachmentID,
+           let match = receiptAttachments.first(where: { $0.id == receiptAttachmentID }) {
+            return match
+        }
+        if let receiptContentHash = expense.receiptContentHash?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !receiptContentHash.isEmpty,
+           let match = receiptAttachments.first(where: { $0.contentHash == receiptContentHash }) {
+            return match
+        }
+        if let match = receiptAttachments.first(where: { $0.expenseID == expense.id }) {
+            return match
+        }
+        if let receiptFilename = expense.receiptFilename?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !receiptFilename.isEmpty,
+           let match = receiptAttachments.first(where: { $0.originalFilename == receiptFilename }) {
+            return match
+        }
+        return nil
     }
 
     private func statusButton(
@@ -915,7 +1375,7 @@ struct ExpenseListView: View {
     }
 }
 
-private enum ExpenseReviewFilter: String, CaseIterable, Identifiable {
+enum ExpenseReviewFilter: String, CaseIterable, Identifiable {
     case all
     case needsReview
     case missingReceipts
@@ -996,6 +1456,10 @@ struct ExpenseFormView: View {
     private var categories: [ExpenseCategory]
     @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
     private var dimensions: [BusinessDimension]
+    @Query(sort: [SortDescriptor(\Expense.date, order: .reverse)])
+    private var allExpenses: [Expense]
+    @Query(sort: [SortDescriptor(\ReceiptAttachment.importedAt, order: .reverse)])
+    private var receiptAttachments: [ReceiptAttachment]
 
     private let expense: Expense?
 
@@ -1028,7 +1492,7 @@ struct ExpenseFormView: View {
         _paymentMethod = State(initialValue: expense?.paymentMethod ?? "")
         _vendorName = State(initialValue: expense?.vendorName ?? "")
         _clientName = State(initialValue: expense?.clientName ?? "")
-        _projectName = State(initialValue: expense?.projectName ?? "")
+        _projectName = State(initialValue: ExpenseLedger.isCompanyProjectName(expense?.projectName) ? "" : expense?.projectName ?? "")
         _isBillable = State(initialValue: expense?.isBillable ?? false)
         _isReimbursable = State(initialValue: expense.map { $0.isReimbursable || $0.status == .reimbursable } ?? false)
         _note = State(initialValue: expense?.note ?? "")
@@ -1060,18 +1524,30 @@ struct ExpenseFormView: View {
                 dimensionPicker("Vendor", kind: .vendor, selection: $vendorName, emptyLabel: "Use merchant")
                 dimensionPicker("Client", kind: .client, selection: $clientName, emptyLabel: "None")
                 dimensionPicker("Project", kind: .project, selection: $projectName, emptyLabel: "None")
-                TextField("Payment Method", text: $paymentMethod)
-                HStack {
-                    TextField("Receipt Reference", text: $receiptFilename)
-                    Button {
-                        isShowingReceiptImporter = true
-                    } label: {
-                        Label("Choose Receipt", systemImage: "doc.badge.plus")
+                Picker("Payment Method", selection: $paymentMethod) {
+                    Text("Unknown").tag("")
+                    ForEach(paymentMethodNames, id: \.self) { name in
+                        Text(name).tag(name)
                     }
                 }
                 TextField("Note", text: $note, axis: .vertical)
                     .lineLimit(3...6)
             }
+
+            ReceiptPreviewCard(
+                title: receiptDisplayName,
+                subtitle: receiptSubtitle,
+                url: receiptPreviewURL,
+                onChoose: {
+                    isShowingReceiptImporter = true
+                },
+                onOpen: receiptPreviewURL.map { url in
+                    { _ = NSWorkspace.shared.open(url) }
+                },
+                onReveal: receiptPreviewURL.map { url in
+                    { revealFile(url) }
+                }
+            )
 
             if let receiptImportError {
                 Text(receiptImportError)
@@ -1105,6 +1581,19 @@ struct ExpenseFormView: View {
         return names.isEmpty ? ["Uncategorized"] : names
     }
 
+    private var paymentMethodNames: [String] {
+        var names = Set(["Visa ending 6102"])
+        for expense in allExpenses {
+            if let name = normalizedDisplayValue(expense.paymentMethod) {
+                names.insert(name)
+            }
+        }
+        if let current = normalizedDisplayValue(paymentMethod) {
+            names.insert(current)
+        }
+        return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
     @ViewBuilder
     private func dimensionPicker(
         _ title: String,
@@ -1122,6 +1611,9 @@ struct ExpenseFormView: View {
 
     private func dimensionNames(for kind: BusinessDimensionKind, currentValue: String) -> [String] {
         var names = Set<String>()
+        if kind == .project {
+            names.formUnion(ExpenseLedger.defaultProjectNames)
+        }
         for dimension in dimensions where dimension.kind == kind && !dimension.isArchived {
             if let name = normalizedDisplayValue(dimension.name) {
                 names.insert(name)
@@ -1130,7 +1622,60 @@ struct ExpenseFormView: View {
         if let current = normalizedDisplayValue(currentValue) {
             names.insert(current)
         }
+        if kind == .project {
+            names = names.filter { !ExpenseLedger.isCompanyProjectName($0) }
+        }
         return names.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var linkedReceipt: ReceiptAttachment? {
+        if let id = expense?.receiptAttachmentID,
+           let match = receiptAttachments.first(where: { $0.id == id }) {
+            return match
+        }
+        if let hash = normalizedDisplayValue(expense?.receiptContentHash)?.lowercased(),
+           let match = receiptAttachments.first(where: { $0.contentHash.lowercased() == hash }) {
+            return match
+        }
+        if let filename = normalizedDisplayValue(receiptFilename),
+           let match = receiptAttachments.first(where: { $0.originalFilename == filename }) {
+            return match
+        }
+        return nil
+    }
+
+    private var receiptPreviewURL: URL? {
+        receiptURL ?? receiptFileURL(linkedReceipt)
+    }
+
+    private var receiptDisplayName: String {
+        if let receiptURL {
+            return receiptURL.lastPathComponent
+        }
+        if let linkedReceipt {
+            return linkedReceipt.originalFilename
+        }
+        return normalizedDisplayValue(receiptFilename) ?? "No receipt selected"
+    }
+
+    private var receiptSubtitle: String {
+        if let linkedReceipt {
+            var parts: [String] = ["Stored in local vault"]
+            if let merchant = linkedReceipt.extractedMerchant {
+                parts.append(merchant)
+            }
+            if let amount = linkedReceipt.extractedAmount {
+                parts.append(amount.currencyFormatted)
+            }
+            return parts.joined(separator: " · ")
+        }
+        if receiptURL != nil {
+            return "Selected for import when you save"
+        }
+        if normalizedDisplayValue(receiptFilename) != nil {
+            return "No matching local receipt file found"
+        }
+        return "Attach the source PDF, image, or text receipt for audit evidence."
     }
 
     private var formTitle: String {
@@ -1191,10 +1736,11 @@ struct ExpenseFormView: View {
         target.status = status
         target.note = note
         target.paymentAccount = paymentAccount.trimmingCharacters(in: .whitespacesAndNewlines)
-        target.paymentMethod = paymentMethod
+        target.paymentMethod = paymentMethod.trimmingCharacters(in: .whitespacesAndNewlines)
         target.vendorName = vendorName.trimmingCharacters(in: .whitespacesAndNewlines)
         target.clientName = clientName.trimmingCharacters(in: .whitespacesAndNewlines)
-        target.projectName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedProjectName = projectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.projectName = ExpenseLedger.isCompanyProjectName(normalizedProjectName) ? "" : normalizedProjectName
         target.isBillable = isBillable
         target.isReimbursable = isReimbursable || status == .reimbursable
         target.taxYear = Calendar.current.component(.year, from: date)
@@ -1212,6 +1758,171 @@ struct ExpenseFormView: View {
         } catch {
             receiptImportError = error.localizedDescription
         }
+    }
+}
+
+private enum ReceiptPreviewContent {
+    case empty
+    case missing
+    case image(NSImage)
+    case text(String)
+    case unsupported
+}
+
+private struct ReceiptPreviewCard: View {
+    let title: String
+    let subtitle: String
+    let url: URL?
+    let onChoose: () -> Void
+    let onOpen: (() -> Void)?
+    let onReveal: (() -> Void)?
+
+    private var preview: ReceiptPreviewContent {
+        ReceiptPreviewRenderer.preview(for: url)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
+                Label("Receipt Evidence", systemImage: "doc.text.magnifyingglass")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    onChoose()
+                } label: {
+                    Label("Choose Receipt", systemImage: "doc.badge.plus")
+                }
+            }
+
+            HStack(alignment: .top, spacing: Spacing.md) {
+                previewBody
+                    .frame(width: 220, height: 150)
+                    .background(.quinary, in: RoundedRectangle(cornerRadius: CornerRadius.small))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: CornerRadius.small)
+                            .stroke(.quaternary)
+                    }
+
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .lineLimit(2)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+
+                    Spacer(minLength: 0)
+
+                    HStack(spacing: Spacing.sm) {
+                        if let onOpen {
+                            Button {
+                                onOpen()
+                            } label: {
+                                Label("Open", systemImage: "arrow.up.forward.square")
+                            }
+                        }
+                        if let onReveal {
+                            Button {
+                                onReveal()
+                            } label: {
+                                Label("Show in Finder", systemImage: "folder")
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+            }
+        }
+        .padding(12)
+        .background(.background, in: RoundedRectangle(cornerRadius: CornerRadius.small))
+        .overlay {
+            RoundedRectangle(cornerRadius: CornerRadius.small)
+                .stroke(.quaternary)
+        }
+    }
+
+    @ViewBuilder
+    private var previewBody: some View {
+        switch preview {
+        case .empty:
+            receiptPreviewPlaceholder("No receipt", systemImage: "doc")
+        case .missing:
+            receiptPreviewPlaceholder("File missing", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+        case .image(let image):
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .padding(6)
+        case .text(let text):
+            ScrollView {
+                Text(text)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+        case .unsupported:
+            receiptPreviewPlaceholder("Preview unavailable", systemImage: "doc.questionmark")
+        }
+    }
+
+    private func receiptPreviewPlaceholder(_ title: String, systemImage: String) -> some View {
+        VStack(spacing: Spacing.xs) {
+            Image(systemName: systemImage)
+                .font(.title2)
+            Text(title)
+                .font(.caption)
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private enum ReceiptPreviewRenderer {
+    static func preview(for url: URL?) -> ReceiptPreviewContent {
+        guard let url else { return .empty }
+
+        let didStartAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return .missing
+        }
+
+        if url.pathExtension.lowercased() == "pdf",
+           let document = PDFDocument(url: url),
+           let page = document.page(at: 0) {
+            return .image(page.thumbnail(of: CGSize(width: 440, height: 300), for: .mediaBox))
+        }
+
+        if let image = NSImage(contentsOf: url) {
+            return .image(image)
+        }
+
+        if isTextFile(url),
+           let data = try? Data(contentsOf: url),
+           let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
+            let normalizedText = text
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .replacingOccurrences(of: "\r", with: "\n")
+            return .text(String(normalizedText.prefix(900)))
+        }
+
+        return .unsupported
+    }
+
+    private static func isTextFile(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else {
+            return false
+        }
+        return type.conforms(to: .text)
     }
 }
 
@@ -1368,6 +2079,24 @@ struct ImportCenterView: View {
                         Text(String(attachment.contentHash.prefix(12)))
                             .font(.system(.caption, design: .monospaced))
                             .foregroundStyle(.secondary)
+                        Button {
+                            openReceiptFile(attachment)
+                        } label: {
+                            Label("Open", systemImage: "arrow.up.forward.square")
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help(receiptFileExists(attachment) ? "Open receipt" : "Receipt file is missing")
+                        .disabled(!receiptFileExists(attachment))
+                        Button {
+                            revealReceiptFile(attachment)
+                        } label: {
+                            Label("Show in Finder", systemImage: "folder")
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .help(receiptFileExists(attachment) ? "Show receipt in Finder" : "Receipt file is missing")
+                        .disabled(!receiptFileExists(attachment))
                     }
                 }
                 .frame(minHeight: 140)
@@ -1871,6 +2600,15 @@ private struct ReceiptReconciliationPanel: View {
                                         .lineLimit(1)
                                         .frame(maxWidth: 140, alignment: .trailing)
                                     Button {
+                                        openReceiptFile(suggestion.receipt)
+                                    } label: {
+                                        Label("Open Receipt", systemImage: "arrow.up.forward.square")
+                                    }
+                                    .labelStyle(.iconOnly)
+                                    .buttonStyle(.borderless)
+                                    .help(receiptFileExists(suggestion.receipt) ? "Open receipt" : "Receipt file is missing")
+                                    .disabled(!receiptFileExists(suggestion.receipt))
+                                    Button {
                                         attach(suggestion)
                                     } label: {
                                         Label("Attach", systemImage: "link")
@@ -2070,7 +2808,7 @@ private enum ReportExportKind: String, CaseIterable, Identifiable {
     }
 }
 
-private enum ReportDateRange: String, CaseIterable, Identifiable {
+enum ReportDateRange: String, CaseIterable, Identifiable {
     case taxYear
     case custom
 
@@ -2089,15 +2827,33 @@ struct ReportsView: View {
     private var expenses: [Expense]
     @Query(sort: [SortDescriptor(\ExpenseCategory.sortOrder)])
     private var categories: [ExpenseCategory]
+    @Query(sort: [SortDescriptor(\ReceiptAttachment.importedAt, order: .reverse)])
+    private var receiptAttachments: [ReceiptAttachment]
 
-    @State private var taxYear = Calendar.current.component(.year, from: Date())
-    @State private var dateRange = ReportDateRange.taxYear
-    @State private var customStartDate = Calendar.current.date(from: DateComponents(year: Calendar.current.component(.year, from: Date()), month: 1, day: 1)) ?? Date()
-    @State private var customEndDate = Date()
+    @Binding var taxYear: Int
+    @Binding var dateRange: ReportDateRange
+    @Binding var customStartDate: Date
+    @Binding var customEndDate: Date
     @State private var exportKind = ReportExportKind.rawExpenses
     @State private var exportScope = ReportExportScope.all
     @State private var isExportingCSV = false
+    @State private var lastCSVExportURL: URL?
+    @State private var lastAuditPackageURL: URL?
+    @State private var exportNotice: String?
+    @State private var auditPackageNotice: String?
     @State private var exportError: String?
+
+    init(
+        taxYear: Binding<Int>,
+        dateRange: Binding<ReportDateRange>,
+        customStartDate: Binding<Date>,
+        customEndDate: Binding<Date>
+    ) {
+        _taxYear = taxYear
+        _dateRange = dateRange
+        _customStartDate = customStartDate
+        _customEndDate = customEndDate
+    }
 
     private var selectedInterval: DateInterval {
         switch dateRange {
@@ -2140,15 +2896,21 @@ struct ReportsView: View {
     }
 
     private var exportFilename: String {
-        let rangeSuffix: String
+        "remnant-\(rangeFilenameSuffix)-\(exportScope.filenameSuffix)-\(exportKind.filenameSuffix).csv"
+    }
+
+    private var auditPackageFilename: String {
+        "remnant-\(rangeFilenameSuffix)-\(exportScope.filenameSuffix)-audit.\(AuditPackageService.packageExtension)"
+    }
+
+    private var rangeFilenameSuffix: String {
         switch dateRange {
         case .taxYear:
-            rangeSuffix = "\(taxYear)"
+            return "\(taxYear)"
         case .custom:
             let range = normalizedCustomRange
-            rangeSuffix = "\(filenameDateFormatter.string(from: range.start))-\(filenameDateFormatter.string(from: range.end))"
+            return "\(filenameDateFormatter.string(from: range.start))-\(filenameDateFormatter.string(from: range.end))"
         }
-        return "remnant-\(rangeSuffix)-\(exportScope.filenameSuffix)-\(exportKind.filenameSuffix).csv"
     }
 
     var body: some View {
@@ -2214,6 +2976,41 @@ struct ReportsView: View {
                 }
                 .disabled(expensesForExport.isEmpty)
 
+                Button {
+                    exportAuditPackage()
+                } label: {
+                    Label("Export Audit Package", systemImage: "archivebox")
+                }
+                .disabled(expensesForExport.isEmpty)
+
+                if let lastCSVExportURL {
+                    Button {
+                        revealFile(lastCSVExportURL)
+                    } label: {
+                        Label("Show CSV", systemImage: "folder")
+                    }
+                }
+
+                if let lastAuditPackageURL {
+                    Button {
+                        revealFile(lastAuditPackageURL)
+                    } label: {
+                        Label("Show Audit Package", systemImage: "folder")
+                    }
+                }
+            }
+
+            HStack {
+                if let exportNotice {
+                    Text(exportNotice)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let auditPackageNotice {
+                    Text(auditPackageNotice)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let exportError {
                     Text(exportError)
                         .foregroundStyle(.red)
@@ -2237,7 +3034,12 @@ struct ReportsView: View {
         ) { result in
             if case .failure(let error) = result {
                 exportError = error.localizedDescription
+                exportNotice = nil
             } else {
+                if case .success(let url) = result {
+                    lastCSVExportURL = url
+                    exportNotice = "Exported \(url.lastPathComponent)."
+                }
                 exportError = nil
             }
         }
@@ -2250,6 +3052,46 @@ struct ReportsView: View {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }
+
+    private func exportAuditPackage() {
+        exportError = nil
+        auditPackageNotice = nil
+        exportNotice = nil
+
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = auditPackageFilename
+
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+
+            Task { @MainActor in
+                do {
+                    let summary = try AuditPackageService.createPackage(
+                        at: url,
+                        expenses: expensesForExport,
+                        categories: categories,
+                        attachments: receiptAttachments,
+                        allowOverwrite: true
+                    )
+                    var parts = [
+                        "Exported \(summary.expenseCount) expenses",
+                        "\(summary.copiedReceiptCount) receipts"
+                    ]
+                    if summary.missingReceiptCount > 0 {
+                        parts.append("\(summary.missingReceiptCount) missing receipts")
+                    }
+                    auditPackageNotice = parts.joined(separator: ", ") + "."
+                    lastAuditPackageURL = url
+                    exportError = nil
+                } catch {
+                    exportError = error.localizedDescription
+                    auditPackageNotice = nil
+                }
+            }
+        }
+    }
 }
 
 struct ExpenseSettingsView: View {
@@ -2261,6 +3103,11 @@ struct ExpenseSettingsView: View {
     @Query(sort: [SortDescriptor(\BusinessDimension.sortOrder), SortDescriptor(\BusinessDimension.name)])
     private var dimensions: [BusinessDimension]
 
+    @AppStorage("remnant.automaticBackup.enabled")
+    private var isAutomaticBackupEnabled = false
+    @AppStorage("remnant.automaticBackup.lastRun")
+    private var automaticBackupLastRun = 0.0
+
     @State private var merchantPattern = ""
     @State private var selectedCategory = "Uncategorized"
     @State private var newDimensionKind = BusinessDimensionKind.account
@@ -2268,6 +3115,7 @@ struct ExpenseSettingsView: View {
     @State private var newDimensionNote = ""
     @State private var backupNotice: String?
     @State private var backupError: String?
+    @State private var lastBackupURL: URL?
     @State private var integrityReport: RemnantBackupIntegrityReport?
     @State private var restoreCandidateURL: URL?
     @State private var isConfirmingRestore = false
@@ -2489,11 +3337,38 @@ struct ExpenseSettingsView: View {
                 }
 
                 Button {
+                    testAutomaticBackup()
+                } label: {
+                    Label("Test Auto Backup", systemImage: "clock.arrow.circlepath")
+                }
+
+                Button {
                     chooseRestoreBackup()
                 } label: {
                     Label("Restore Backup", systemImage: "arrow.counterclockwise")
                 }
+
+                if let lastBackupURL {
+                    Button {
+                        revealFile(lastBackupURL)
+                    } label: {
+                        Label("Show Backup", systemImage: "folder")
+                    }
+                }
             }
+
+            Toggle("Automatic daily backup", isOn: $isAutomaticBackupEnabled)
+                .toggleStyle(.switch)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Automatic backups are local packages in Remnant's Application Support folder.")
+                    .foregroundStyle(.secondary)
+                if automaticBackupLastRun > 0 {
+                    Text("Last auto backup: \(Date(timeIntervalSince1970: automaticBackupLastRun).mediumFormatted)")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.caption)
 
             if let integrityReport {
                 HStack(spacing: Spacing.lg) {
@@ -2556,6 +3431,18 @@ struct ExpenseSettingsView: View {
         }
     }
 
+    private func testAutomaticBackup() {
+        do {
+            let result = try RemnantBackupService.createAutomaticBackup(context: modelContext)
+            integrityReport = result.report
+            backupNotice = "Auto backup created at \(result.backupURL.lastPathComponent)."
+            backupError = nil
+            lastBackupURL = result.backupURL
+        } catch {
+            backupError = error.localizedDescription
+        }
+    }
+
     private func createBackup() {
         let panel = NSSavePanel()
         panel.canCreateDirectories = true
@@ -2574,6 +3461,7 @@ struct ExpenseSettingsView: View {
             integrityReport = report
             backupNotice = "Backup created at \(url.lastPathComponent)."
             backupError = nil
+            lastBackupURL = url
         } catch {
             backupError = error.localizedDescription
         }
@@ -2688,6 +3576,9 @@ struct ExpenseSettingsView: View {
 
 private struct ExpenseRow: View {
     let expense: Expense
+    let receipt: ReceiptAttachment?
+    let onEdit: () -> Void
+    let onOpenReceipt: (() -> Void)?
 
     var body: some View {
         HStack(spacing: Spacing.lg) {
@@ -2719,8 +3610,27 @@ private struct ExpenseRow: View {
             Text(expense.amount.currencyFormatted)
                 .monospacedDigit()
                 .frame(minWidth: 96, alignment: .trailing)
+            if let onOpenReceipt {
+                Button(action: onOpenReceipt) {
+                    Label("Open Receipt", systemImage: "arrow.up.forward.square")
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help(receiptFileExists(receipt) ? "Open receipt" : "Receipt file is missing")
+                .disabled(!receiptFileExists(receipt))
+            }
+            Button(action: onEdit) {
+                Label("Edit", systemImage: "pencil")
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .help("Edit expense")
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            onEdit()
+        }
     }
 
     private var isMissingReceipt: Bool {
@@ -2798,6 +3708,30 @@ private func metric(_ title: String, _ value: String) -> some View {
 private func emptyState(_ title: String, _ subtitle: String) -> some View {
     ContentUnavailableView(title, systemImage: "tray", description: Text(subtitle))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+}
+
+private func receiptFileURL(_ attachment: ReceiptAttachment?) -> URL? {
+    guard let attachment else { return nil }
+    let url = URL(fileURLWithPath: attachment.localPath)
+    return FileManager.default.fileExists(atPath: url.path) ? url : nil
+}
+
+private func receiptFileExists(_ attachment: ReceiptAttachment?) -> Bool {
+    receiptFileURL(attachment) != nil
+}
+
+private func openReceiptFile(_ attachment: ReceiptAttachment) {
+    guard let url = receiptFileURL(attachment) else { return }
+    NSWorkspace.shared.open(url)
+}
+
+private func revealReceiptFile(_ attachment: ReceiptAttachment) {
+    guard let url = receiptFileURL(attachment) else { return }
+    revealFile(url)
+}
+
+private func revealFile(_ url: URL) {
+    NSWorkspace.shared.activateFileViewerSelecting([url])
 }
 
 private func normalizedDisplayValue(_ value: String?) -> String? {
