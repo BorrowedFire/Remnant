@@ -117,6 +117,10 @@ enum AgentCommandService {
             "proposalKinds": AgentProposalKind.allCases.map(\.rawValue),
             "proposalRisks": AgentProposalRisk.allCases.map(\.rawValue),
             "proposalStatuses": AgentProposalStatus.allCases.map(\.rawValue),
+            "expenseUpdateBeforeJSON": [
+                "id": "UUID required",
+                "updatedAt": "ISO-8601 date required for stale-change validation"
+            ],
             "expenseUpdateAfterJSON": [
                 "id": "UUID required",
                 "categoryName": "optional string",

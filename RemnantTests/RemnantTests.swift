@@ -449,6 +449,42 @@ struct ExpenseLedgerTests {
         }
     }
 
+    @Test("Agent proposal apply requires versioned before state")
+    func agentProposalApplyRequiresVersionedBeforeState() throws {
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let expense = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "Software",
+            status: .draft
+        )
+        context.insert(expense)
+        try context.save()
+
+        let before = AgentExpensePatch(id: expense.id)
+        let after = AgentExpensePatch(
+            id: expense.id,
+            categoryName: "AI Tools",
+            status: .reviewed
+        )
+        let proposal = AgentProposal(
+            kind: .classification,
+            title: "Classify OpenAI",
+            beforeJSON: try jsonText(before),
+            afterJSON: try jsonText(after)
+        )
+        context.insert(proposal)
+        try context.save()
+
+        do {
+            _ = try AgentProposalService.apply(proposal, context: context)
+            #expect(Bool(false), "Expected missing updatedAt rejection")
+        } catch {
+            #expect(error.localizedDescription.contains("beforeJSON.updatedAt"))
+        }
+    }
+
     @Test("Agent expense proposals cannot overwrite notes")
     func agentExpenseProposalsCannotOverwriteNotes() throws {
         let container = try makeExpenseContainer()
@@ -495,6 +531,34 @@ struct ExpenseLedgerTests {
         #expect(expense.categoryName == "AI Tools")
         #expect(expense.status == ExpenseStatus.reviewed)
         #expect(expense.note == "Original reviewer note")
+    }
+
+    @Test("Ledger mutation save refreshes agent snapshot")
+    func ledgerMutationSaveRefreshesAgentSnapshot() throws {
+        let workspace = try makeTemporaryDirectory()
+        setenv("REMNANT_AGENT_WORKSPACE_ROOT", workspace.path, 1)
+        defer { unsetenv("REMNANT_AGENT_WORKSPACE_ROOT") }
+
+        let container = try makeExpenseContainer()
+        let context = container.mainContext
+        let expense = Expense(
+            merchant: "OpenAI",
+            amount: 20,
+            categoryName: "Software",
+            status: .draft
+        )
+        context.insert(expense)
+        try RemnantStore.saveLedgerMutation(context: context)
+
+        expense.categoryName = "AI Tools"
+        expense.updatedAt = try makeUTCDate(year: 2026, month: 6, day: 2)
+        try RemnantStore.saveLedgerMutation(context: context)
+
+        let snapshotURL = try AgentWorkspaceService.snapshotURL()
+        let snapshot = try JSONDecoder.agentDecoder.decode(LedgerSnapshot.self, from: Data(contentsOf: snapshotURL))
+
+        #expect(FileManager.default.fileExists(atPath: snapshotURL.path))
+        #expect(snapshot.expenses.first?.categoryName == "AI Tools")
     }
 
     @Test("remnantctl creates proposal files without a live ledger mutation")
