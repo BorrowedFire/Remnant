@@ -127,8 +127,7 @@ enum AgentCommandService {
                 "clientName": "optional string",
                 "projectName": "optional string; company names are cleared",
                 "isBillable": "optional bool",
-                "isReimbursable": "optional bool",
-                "note": "optional string"
+                "isReimbursable": "optional bool"
             ],
             "receiptMatchAfterJSON": [
                 "expenseID": "UUID required",

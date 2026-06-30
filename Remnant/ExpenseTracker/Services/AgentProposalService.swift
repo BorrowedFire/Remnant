@@ -13,7 +13,6 @@ struct AgentExpensePatch: Codable, Equatable {
     var projectName: String?
     var isBillable: Bool?
     var isReimbursable: Bool?
-    var note: String?
 }
 
 struct AgentReceiptMatchPatch: Codable, Equatable {
@@ -254,9 +253,6 @@ enum AgentProposalService {
         }
         if let isReimbursable = after.isReimbursable {
             expense.isReimbursable = isReimbursable
-        }
-        if let note = after.note {
-            expense.note = clean(note)
         }
         expense.updatedAt = Date()
         return "Applied expense proposal to \(expense.merchant)."
