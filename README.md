@@ -25,6 +25,7 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 - Local vendor rules for categorizing recurring merchants without connecting to a service
 - Report view with formula-safe raw expense, tax-bucket summary, billable/reimbursable CSV exports, and local audit packages by tax year or custom date range
 - Local backup and staged restore with receipt integrity checks
+- Local agent-first tooling with `remnantctl`, a redacted ledger snapshot, stdio MCP, and Review Inbox proposals that require app approval before mutation
 - Settings view for local vendor rules and privacy guarantees
 
 ## Privacy Model
@@ -35,6 +36,8 @@ Remnant is intentionally local-only.
 - No bank linking or FinanceKit access
 - No StoreKit subscription gates
 - No CloudKit or iCloud sync
+- No embedded AI, Apple Intelligence, Foundation Models, Private Cloud Compute, App Intents, Siri, Shortcuts, hosted model providers, or BYO cloud model keys
+- No network MCP/API listener
 - No network calls in the active app target
 - Receipt files are copied into a local receipt vault only after explicit user selection
 - CSV export is an explicit user action
@@ -48,6 +51,7 @@ Remnant/
 │   ├── Models/           # SwiftData models and CSV document export wrapper
 │   ├── Services/         # Ledger, CSV import, receipt vault
 │   └── Views/            # Dashboard, expenses, imports, reports, privacy
+├── RemnantCLI/           # remnantctl local CLI and stdio MCP entry point
 ├── Resources/            # Colors and design tokens
 ├── Extensions/           # Date and Decimal helpers
 ├── Assets.xcassets
@@ -82,9 +86,15 @@ Useful verification commands:
 xcodebuild -project Remnant.xcodeproj -scheme Remnant -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData test
 ```
 
+Build the local CLI:
+
+```sh
+xcodebuild -project Remnant.xcodeproj -scheme remnantctl -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData build
+```
+
 ## Replacement Scope
 
-Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, extract receipt metadata with local text/PDF parsing and Apple Vision OCR, import receipt attachments or receipt-like message bodies from local `.eml` files, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports and audit packages with receipt copies, and create local backups with receipt integrity checks.
+Remnant now covers the local foundation for replacing Wave expense tracking: import existing Wave exports as reviewed historical expenses, import new bank or card CSVs as draft review work, clean up imported expenses in the Review Inbox, add manual expenses, collect receipts, extract receipt metadata with local text/PDF parsing and Apple Vision OCR, import receipt attachments or receipt-like message bodies from local `.eml` files, match receipts to missing expenses with local suggestions, create draft expenses from downloaded receipts, apply local vendor rules, track billable or reimbursable follow-up, export accountant-ready CSV reports and audit packages with receipt copies, create local backups with receipt integrity checks, and let external agents create local proposal files through `remnantctl` or MCP for in-app review.
 
 ## Contributing
 

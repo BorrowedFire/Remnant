@@ -12,7 +12,7 @@ enum VendorRuleMatcher {
         return rules
             .filter { rule in
                 let pattern = normalize(rule.merchantPattern)
-                return !pattern.isEmpty && normalizedMerchant.contains(pattern)
+                return !rule.isArchived && !pattern.isEmpty && normalizedMerchant.contains(pattern)
             }
             .sorted { lhs, rhs in
                 let lhsPattern = normalize(lhs.merchantPattern)

@@ -51,6 +51,19 @@ targets:
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: 1
 
+  remnantctl:
+    type: tool
+    platform: macOS
+    sources:
+      - path: RemnantCLI
+      - path: Remnant/ExpenseTracker/Models
+      - path: Remnant/ExpenseTracker/Services
+      - path: Remnant/Extensions
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.borrowedfire.remnant.remnantctl
+        PRODUCT_NAME: remnantctl
+
   RemnantTests:
     type: bundle.unit-test
     platform: macOS
