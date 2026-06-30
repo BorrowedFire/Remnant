@@ -10,7 +10,8 @@ Borrowed Fire LLC maintains the official app and uses it as the reference workfl
 
 - Expense dashboard with month total, review queue, receipt inbox, category spend, and 12-month expense flow
 - Focused Review Inbox for imported drafts, missing receipts, duplicate candidates, uncategorized rows, and bulk cleanup
-- Manual expense entry with category, account, payment method, note, receipt attachment, and bulk review actions for imported expenses
+- Native macOS window, Settings, menu commands, sidebar shortcuts, Find, Copy/Paste text handling, selected-row copy, and keyboard-driven expense actions
+- Manual expense entry with category, account, payment method, note, receipt preview/attachment, and bulk review actions for imported expenses
 - Local CSV import for Wave or bank exports with preview, saved source profiles, duplicate detection, Wave/bank column aliases, skipped-credit handling, vendor-rule categorization, and import modes for migration versus new review work
 - Local receipt vault that copies selected receipt files into Application Support and stores SHA-256 hashes
 - Local text/PDF receipt metadata extraction for merchant, date, and amount
@@ -50,7 +51,7 @@ Remnant/
 ├── ExpenseTracker/
 │   ├── Models/           # SwiftData models and CSV document export wrapper
 │   ├── Services/         # Ledger, CSV import, receipt vault
-│   └── Views/            # Dashboard, expenses, imports, reports, privacy
+│   └── Views/            # Split SwiftUI screens, receipt preview, and shared view helpers
 ├── RemnantCLI/           # remnantctl local CLI and stdio MCP entry point
 ├── Resources/            # Colors and design tokens
 ├── Extensions/           # Date and Decimal helpers
@@ -91,6 +92,23 @@ Build the local CLI:
 ```sh
 xcodebuild -project Remnant.xcodeproj -scheme remnantctl -configuration Debug -destination 'platform=macOS,arch=arm64' -derivedDataPath build/DerivedData build
 ```
+
+## Native macOS Commands
+
+Remnant uses a native SwiftUI app scene and menu command layer. Standard macOS text editing commands such as Cut, Copy, Paste, Undo, Redo, Select All, Quit, Hide, Close Window, and Force Quit remain system-owned behavior.
+
+App-specific commands include:
+
+- `Command-N`: new expense
+- `Command-F`: focus the active screen search when available
+- `Command-1` through `Command-5`: switch Dashboard, Review Inbox, Expenses, Imports, and Reports
+- `Return`: open the selected expense when supported
+- `Command-O`: open the selected receipt when available
+- `Shift-Command-E`: edit the selected expense
+- `Shift-Command-R`: mark selected expenses reviewed
+- `Delete`: ignore selected expenses
+- `Shift-Command-I`: import files
+- `Option-Command-E`: export the current report
 
 ## Replacement Scope
 
